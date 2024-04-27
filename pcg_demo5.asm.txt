@@ -1,0 +1,1039 @@
+------------------------------------------------
+Asm2Obj : Version 1.2.1
+ + Z80 - ZilogMnemonic : Rev.1b
+------------------------------------------------
+------------------------
+####     PASS:2     ####
+------------------------
+                      	;-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+                      	;
+                      	; @kazenifukarete
+                      	;
+                      	; New PCG by @chiqlappe PC8001 routines
+                      	;
+                      	; 40colx25rows, Black and White mode,
+                      	; Emulate 320dot x 200 dot graphics
+                      	;
+                      	; 2024.04.27
+                      	;
+                      	;-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+                      	
+  C000                	  ORG 0C000H
+                      	
+                      	
+                      	;
+                      	; DEF USR1=&hC000 : USR1(0)   : 'PCGの初期化
+                      	; DEF USR2=&hC003 : USR2(X%)  : 'X1座標のセット
+                      	; DEF USR3=&hC006 : USR3(Y%)  : 'Y1座標のセット
+                      	; DEF USR4=&hC009 : USR4(X2%) : 'X2座標のセット
+                      	; DEF USR5=&hC00C : USR5(Y2%) : 'Y2座標のセット&PSET
+                      	; DEF USR6=&HC00F : USR6()    ; 'PSET実施
+                      	; DEF USR7=&HC012 : USR7(0)   : '(X1,Y1)-(X2,Y2)にラインを描画
+                      	; DEF USR8=&HC015 : USR8(0)   ; '(X1,Y1)を中心に半径X2 の円を描く
+                      	; DEF USR9=&HC018 : USR9(0)   ; 'バッファフラッシュ
+                      	
+  045A                	  SYS_CLS EQU 45AH
+  0843                	  SYS_WIDTH EQU 843H
+  0884                	  SYS_CONSOLE EQU 884H
+  0008                	  BUF_MAX EQU 8  ; 128
+                      	
+                      	; VSYNC後 331 x 36 =11916
+                      	
+  C000                	ENTRY:
+  C000  C31BC0        	  JP   INIT_PCG
+  C003  C361C0        	  JP   SET_X
+  C006  C36BC0        	  JP   SET_Y
+  C009  C375C0        	  JP   SET_X2
+  C00C  C37FC0        	  JP   SET_Y2
+  C00F  C389C0        	  JP   CHECK_BUFFER_AND_PSET
+  C012  C3F3C3        	  JP   LINE
+  C015  C33CC2        	  JP   MiechenerCircle
+  C018  C33EC0        	  JP   BUFFER_FLASH
+                      	
+                      	
+  C01B                	INIT_PCG:                ; 画面モードを設定。40桁×25行、白黒
+  C01B  CD5A04        	  CALL SYS_CLS
+  C01E  2129C2        	  LD   HL, WIDTH
+  C021  CD4308        	  CALL SYS_WIDTH
+  C024  212FC2        	  LD   HL, CONSOLE
+  C027  CD8408        	  CALL SYS_CONSOLE
+                      	
+  C02A                	CLS:                     ; 画面をクリア
+  C02A  CDCDC1        	  CALL CLEAR_PCG
+  C02D  CDB5C1        	  CALL SET_ATTRIB
+  C030  CD93C1        	  CALL CLEAR_SCREEN
+  C033  21BBC5        	  LD   HL,BUFFER
+  C036  22B9C5        	  LD   (BUF_PTR),HL
+  C039  AF            	  XOR  A
+  C03A  32B8C5        	  LD   (NUM_BUF),A
+  C03D  C9            	  RET
+                      	
+                      	;
+                      	; バッファに溜まった描画情報を吐き出す
+                      	;
+  C03E                	BUFFER_FLASH:
+  C03E  3AB8C5        	  LD   A, (NUM_BUF)      ; バッファの空きを確認
+  C041  B7            	  OR   A
+  C042  C8            	  RET  Z
+  C043  57            	  LD   D, A
+  C044  21BBC5        	  LD   HL,BUFFER
+  C047  22B9C5        	  LD   (BUF_PTR),HL
+  C04A  AF            	  XOR  A
+  C04B  32B8C5        	  LD   (NUM_BUF),A
+  C04E  CD84C1        	  CALL VSYNC                   ; VSYNC街ち
+  C051                	BUFFER_FLASH_LOOP:
+  C051  7E            	  LD   A,(HL)                  ;  7 clk
+  C052  23            	  INC  HL                      ;  6 clk
+  C053  D308          	  OUT  (8),A                   ; 11 clk
+  C055  46            	  LD   B,(HL)                  ;  7 clk
+  C056  23            	  INC  HL                      ;  6 clk
+  C057  4E            	  LD   C,(HL)                  ;  7 clk
+  C058  23            	  INC  HL                      ;  6 clk
+  C059  7E            	  LD   A,(HL)                  ;  7 clk
+  C05A  23            	  INC  HL                      ;  6 clk
+  C05B  ED79          	  OUT  (C),A                   ; 12 clk
+  C05D  15            	  DEC  D                       ;  4 clk
+  C05E  20F1          	  JR   NZ, BUFFER_FLASH_LOOP   ; 12 clk : Total 91 clk
+  C060  C9            	  RET
+                      	
+                      	
+                      	;
+                      	; X座標を設定
+                      	;
+                      	
+  C061                	SET_X:
+  C061  7E            	  LD   A,(HL)
+  C062  32AEC5        	  LD   (X_POS),A
+  C065  23            	  INC  HL
+  C066  7E            	  LD   A,(HL)
+  C067  32AFC5        	  LD   (X_POS+1),A
+  C06A  C9            	  RET
+                      	
+                      	;
+                      	; Y座標を設定し、プロットバッファに収める
+                      	;
+                      	
+  C06B                	SET_Y:
+  C06B  7E            	  LD   A,(HL)
+  C06C  32B0C5        	  LD   (Y_POS),A
+  C06F  23            	  INC  HL
+  C070  7E            	  LD   A,(HL)
+  C071  32B1C5        	  LD   (Y_POS+1),A
+  C074  C9            	  RET
+                      	
+  C075                	SET_X2:
+  C075  7E            	  LD   A,(HL)
+  C076  32B2C5        	  LD   (X2_POS),A
+  C079  23            	  INC  HL
+  C07A  7E            	  LD   A,(HL)
+  C07B  32B3C5        	  LD   (X2_POS+1),A
+  C07E  C9            	  RET
+                      	
+  C07F                	SET_Y2:
+  C07F  7E            	  LD   A,(HL)
+  C080  32B4C5        	  LD   (Y2_POS),A
+  C083  23            	  INC  HL
+  C084  7E            	  LD   A,(HL)
+  C085  32B5C5        	  LD   (Y2_POS+1),A
+  C088  C9            	  RET
+                      	
+  C089                	CHECK_BUFFER_AND_PSET:
+  C089  3AB8C5        	  LD   A,(NUM_BUF)        ; プロットバッファが満杯かチェック
+  C08C  FE08          	  CP   BUF_MAX
+  C08E  3803          	  JR   C,PSET_XY          ; プロットバッファに空きあり
+  C090  CD3EC0        	  CALL BUFFER_FLASH       ; プロットバッファをフラッシュ
+                      	
+  C093                	PSET_XY:
+  C093  2AAEC5        	  LD   HL,(X_POS)         ; 0 <= X_POS < 320 チェック
+  C096  CB7C          	  BIT  7,H
+  C098  C0            	  RET  NZ
+  C099  114001        	  LD   DE,320
+  C09C  B7            	  OR   A
+  C09D  ED52          	  SBC  HL,DE              ; >= 320 ならばRET
+  C09F  D0            	  RET  NC
+  C0A0  2AB0C5        	  LD   HL,(Y_POS)         ; 0 <= Y_POS < 200 チェック
+  C0A3  CB7C          	  BIT  7,H                ; 負の値ならば、RET
+  C0A5  C0            	  RET  NZ
+  C0A6  11C800        	  LD   DE,200
+  C0A9  B7            	  OR   A
+  C0AA  ED52          	  SBC  HL,DE              ; >= 200 ならばRET
+  C0AC  D0            	  RET  NC
+                      	
+                      	
+                      	;  CALL CHK_BLK           ; (Y_POS) からブロック番号計算
+                      	
+  C0AD  3AB0C5        	  LD   A,(Y_POS)
+  C0B0  07            	  RLCA                    ; A=A/64
+  C0B1  07            	  RLCA
+  C0B2  E603          	  AND  3
+  C0B4  32B6C5        	  LD   (BLK),A
+                      	
+                      	
+  C0B7  CD53C1        	  CALL CALC_ADR           ; 指定座標に文字があるか確認
+  C0BA  200B          	  JR   NZ,REGISTER_CH_NO  ; 文字があった場合は、当該文字にドットを追加
+  C0BC  CD1EC1        	  CALL IS_NEXTCHR         ; ブロック内の未使用文字コードを抽出
+  C0BF  C8            	  RET  Z                  ; 未使用文字なし
+  C0C0  3AB7C5        	  LD   A,(CH_NO)
+  C0C3  2ADBC5        	  LD   HL,(VRAM_ADR)      ; 未使用文字をVRAMに登録
+  C0C6  77            	  LD   (HL),A
+                      	
+  C0C7                	REGISTER_CH_NO:           ; CH_NO にドットを追加する
+  C0C7  21DDC5        	  LD   HL,PCG_RAM
+  C0CA  3AB6C5        	  LD   A,(BLK)
+  C0CD  87            	  ADD  A,A                  ; (BLK) * 2K を HLに加える
+  C0CE  87            	  ADD  A,A
+  C0CF  87            	  ADD  A,A
+  C0D0  84            	  ADD  A,H
+  C0D1  67            	  LD   H,A
+  C0D2  3AB7C5        	  LD   A,(CH_NO)          ; (CH_NO)*8 を HLに加える
+  C0D5  1600          	  LD   D,0
+  C0D7  87            	  ADD  A,A
+  C0D8  CB12          	  RL   D
+  C0DA  87            	  ADD  A,A
+  C0DB  CB12          	  RL   D
+  C0DD  87            	  ADD  A,A
+  C0DE  CB12          	  RL   D
+  C0E0  5F            	  LD   E,A
+  C0E1  19            	  ADD  HL,DE
+  C0E2  3AB0C5        	  LD   A,(Y_POS)          ; (Y_POS) AND 7をHLに加える
+  C0E5  E607          	  AND  7
+  C0E7  4F            	  LD   C,A                ; この値は、OUT (C),A まで変えない
+  C0E8  85            	  ADD  A,L
+  C0E9  6F            	  LD   L,A
+  C0EA  3001          	  JR   NC,NO_CARRY_1
+  C0EC  24            	  INC  H
+  C0ED                	NO_CARRY_1:
+                      	;  LD   (PCG_RAM_ADDR),HL   ; この処理不要？
+  C0ED  3AAEC5        	  LD   A,(X_POS)           ; (X_POS)からビットパタンを計算
+  C0F0  E607          	  AND  7
+  C0F2  47            	  LD   B,A
+  C0F3  3E7F          	  LD   A,7FH
+  C0F5  2803          	  JR   Z,SHIFTED
+  C0F7                	SHIFT_LOOP:
+  C0F7  0F            	  RRCA
+  C0F8  10FD          	  DJNZ SHIFT_LOOP
+  C0FA                	SHIFTED:
+  C0FA  ED5BB9C5      	  LD   DE,(BUF_PTR)
+  C0FE  A6            	  AND  (HL)                 ; PCG RAM にビットパタンをANDする
+  C0FF  77            	  LD   (HL),A
+  C100  3AB6C5        	  LD   A,(BLK)
+  C103  F60C          	  OR   12
+  C105  12            	  LD   (DE),A               ; ブロック番号を指定
+  C106  13            	  INC  DE
+  C107  3AB7C5        	  LD   A,(CH_NO)
+  C10A  12            	  LD   (DE),A               ; キャラクタコード指定
+  C10B  13            	  INC  DE
+  C10C  79            	  LD   A,C
+  C10D  12            	  LD   (DE),A
+  C10E  13            	  INC  DE
+  C10F  7E            	  LD   A,(HL)               ; PCG書き込みパタンを用意
+  C110  12            	  LD   (DE),A
+  C111  13            	  INC  DE
+  C112  ED53B9C5      	  LD   (BUF_PTR),DE
+  C116  3AB8C5        	  LD   A,(NUM_BUF)
+  C119  3C            	  INC  A
+  C11A  32B8C5        	  LD   (NUM_BUF),A
+  C11D  C9            	  RET
+                      	
+                      	
+  C11E                	IS_NEXTCHR:
+  C11E  2100F3        	  LD   HL,0F300H
+  C121  3AB6C5        	  LD   A,(BLK)
+  C124  B7            	  OR   A
+  C125  2809          	  JR   Z, CHK_NEXTCHR
+  C127  21C0F6        	  LD   HL,0F300H+120*8
+  C12A  3D            	  DEC  A
+  C12B  2803          	  JR   Z, CHK_NEXTCHR
+  C12D  2180FA        	  LD   HL,0F300H+120*16
+  C130                	CHK_NEXTCHR:
+  C130  CD34C1        	  CALL SEARCH_NEXT
+  C133  C9            	  RET
+                      	
+                      	;
+                      	; ブロック内の最大の文字コードを探し、+1 した値を
+                      	; (CH_NO)に入れる。これが０なら、もう割り当てられる
+                      	; コードは存在しない
+                      	;
+                      	
+  C134                	SEARCH_NEXT:
+  C134  1600          	  LD   D,0
+  C136  0E08          	  LD   C,8
+  C138                	SEARCH_Y_LOOP:
+  C138  0628          	  LD   B,40
+  C13A                	SEARCH_X_LOOP:
+  C13A  7E            	  LD   A,(HL)
+  C13B  23            	  INC  HL
+  C13C  23            	  INC  HL
+  C13D  BA            	  CP   D
+  C13E  3801          	  JR   C,LESS_THAN
+  C140  57            	  LD   D,A
+  C141                	LESS_THAN:
+  C141  10F7          	  DJNZ SEARCH_X_LOOP
+  C143  3E28          	  LD   A,40
+  C145  85            	  ADD  A,L
+  C146  6F            	  LD   L,A
+  C147  3001          	  JR   NC, NO_CARRY_SEARCH
+  C149  24            	  INC  H
+  C14A                	NO_CARRY_SEARCH:
+  C14A  0D            	  DEC  C
+  C14B  20EB          	  JR   NZ, SEARCH_Y_LOOP
+  C14D  7A            	  LD   A,D
+  C14E  3C            	  INC  A
+  C14F  32B7C5        	  LD   (CH_NO),A
+  C152  C9            	  RET
+                      	
+                      	;
+                      	; Ｙ座標からブロック番号に変換し、(BLK)に格納
+                      	;
+                      	;CHK_BLK:
+                      	;  LD   A,(Y_POS)
+                      	;  SRL  A          ; A=A/64
+                      	;  RLCA
+                      	;  RLCA
+                      	;  AND  3
+                      	;  LD   (BLK),A
+                      	;  RET
+                      	
+                      	;
+                      	; (X_POS),(Y_POS)から、VRAMアドレスを計算
+                      	;
+  C153                	CALC_ADR:
+  C153  2100F3        	  LD   HL,0F300H
+  C156  3AB0C5        	  LD   A,(Y_POS)
+  C159  0F            	  RRCA              ; A=A/8
+  C15A  0F            	  RRCA
+  C15B  0F            	  RRCA
+  C15C  E61F          	  AND  31
+  C15E  2807          	  JR   Z,NO_Y80
+  C160  47            	  LD   B,A
+  C161  117800        	  LD   DE,120
+  C164                	Y80_LOOP:
+  C164  19            	  ADD  HL,DE
+  C165  10FD          	  DJNZ  Y80_LOOP
+  C167                	NO_Y80:
+  C167  3AAFC5        	  LD   A,(X_POS+1)
+  C16A  47            	  LD   B, A
+  C16B  3AAEC5        	  LD   A,(X_POS)
+  C16E  CB38          	  SRL  B
+  C170  1F            	  RRA
+  C171  CB38          	  SRL  B
+  C173  1F            	  RRA
+  C174  E6FE          	  AND  0FEH
+  C176  85            	  ADD  A,L
+  C177  6F            	  LD   L,A
+  C178  3001          	  JR   NC, CALC_ADR_NO_CARRY
+  C17A  24            	  INC  H
+  C17B                	CALC_ADR_NO_CARRY:
+  C17B  22DBC5        	  LD   (VRAM_ADR),HL
+  C17E  7E            	  LD   A,(HL)
+  C17F  32B7C5        	  LD   (CH_NO),A
+  C182  B7            	  OR   A
+  C183  C9            	  RET
+                      	
+                      	;
+                      	; 垂直帰線期間待ち
+                      	;
+                      	
+  C184                	VSYNC:
+  C184  F5            	  PUSH AF
+  C185                	VSYNC_0:
+  C185  DB40          	  IN   A,(40H)
+  C187  E620          	  AND  20H
+  C189  20FA          	  JR   NZ,VSYNC_0
+  C18B                	VSYNC_1:
+  C18B  DB40          	  IN   A,(40H)
+  C18D  E620          	  AND  20H
+  C18F  28FA          	  JR   Z,VSYNC_1
+  C191  F1            	  POP  AF
+  C192  C9            	  RET
+                      	
+                      	;
+                      	; V-RAMをクリア
+                      	;
+                      	
+  C193                	CLEAR_SCREEN:
+  C193  2100F3        	  LD   HL,0F300H
+  C196  0E18          	  LD   C,24
+  C198                	CLEAR_SCREEN_Y_LOOP:
+  C198  0628          	  LD   B,40
+  C19A  AF            	  XOR  A
+  C19B                	CLEAR_SCREEN_X_LOOP:
+  C19B  77            	  LD   (HL),A
+  C19C  23            	  INC  HL
+  C19D  23            	  INC  HL
+  C19E  10FB          	  DJNZ CLEAR_SCREEN_X_LOOP
+  C1A0  3E28          	  LD   A,40
+  C1A2  85            	  ADD  A,L
+  C1A3  6F            	  LD   L,A
+  C1A4  3001          	  JR   NC, CEAR_SCREEN_X_FIN
+  C1A6  24            	  INC  H
+  C1A7                	CEAR_SCREEN_X_FIN:
+  C1A7  0D            	  DEC  C
+  C1A8  20EE          	  JR   NZ, CLEAR_SCREEN_Y_LOOP
+                      	
+  C1AA  0628          	  LD   B,40
+  C1AC  3E01          	  LD   A,1
+  C1AE                	CLEAR_SCREEN_X_LOOP2:
+  C1AE  77            	  LD   (HL),A
+  C1AF  3C            	  INC  A
+  C1B0  23            	  INC  HL
+  C1B1  23            	  INC  HL
+  C1B2  10FA          	  DJNZ CLEAR_SCREEN_X_LOOP2
+  C1B4  C9            	  RET
+                      	
+                      	;
+                      	; V-RAMアトリビュートを反転に設定
+                      	;
+                      	
+  C1B5                	SET_ATTRIB:
+  C1B5  1150F3        	  LD  DE,0F350H
+  C1B8  0619          	  LD  B,25
+                      	
+  C1BA                	SET_ATTRIB_LOOP:
+  C1BA  C5            	  PUSH BC
+  C1BB  010400        	  LD   BC, 4
+  C1BE  2138C2        	  LD   HL, ATTRIB_DATA
+  C1C1  EDB0          	  LDIR
+  C1C3  217400        	  LD   HL,120-4
+  C1C6  19            	  ADD  HL,DE
+  C1C7  54            	  LD   D,H
+  C1C8  5D            	  LD   E,L
+  C1C9  C1            	  POP  BC
+  C1CA  10EE          	  DJNZ SET_ATTRIB_LOOP
+  C1CC  C9            	  RET
+                      	
+                      	;
+                      	; PCGのRAMバッファとPCGの登録を全クリアする
+                      	;
+                      	
+  C1CD                	CLEAR_PCG:
+  C1CD  21DDC5        	  LD   HL,PCG_RAM
+  C1D0  010020        	  LD   BC,2000H
+  C1D3                	CLEAR_PCG_0:
+  C1D3  3EFF          	  LD   A,255
+  C1D5  77            	  LD   (HL),A
+  C1D6  23            	  INC  HL
+  C1D7  0B            	  DEC  BC
+  C1D8  78            	  LD   A,B
+  C1D9  B1            	  OR   C
+  C1DA  20F7          	  JR   NZ,CLEAR_PCG_0
+                      	
+  C1DC  3E0C          	  LD   A,12
+  C1DE  D308          	  OUT  (8),A
+  C1E0  CDF9C1        	  CALL CLEAR_PCG_256
+                      	
+  C1E3  3E0D          	  LD   A,13
+  C1E5  D308          	  OUT  (8),A
+  C1E7  CDF9C1        	  CALL CLEAR_PCG_256
+                      	
+  C1EA  3E0E          	  LD   A,14
+  C1EC  D308          	  OUT  (8),A
+  C1EE  CDF9C1        	  CALL CLEAR_PCG_256
+                      	
+  C1F1  3E0F          	  LD   A,15
+  C1F3  D308          	  OUT  (8),A
+  C1F5  CDF9C1        	  CALL CLEAR_PCG_256
+  C1F8  C9            	  RET
+                      	
+                      	
+  C1F9                	CLEAR_PCG_256:
+  C1F9  0600          	  LD   B,0
+  C1FB  3EFF          	  LD   A,255
+  C1FD                	CLEAR_PCG_256_LOOP:
+  C1FD  163F          	  LD   D,63
+  C1FF  CD84C1        	  CALL VSYNC
+  C202                	CONTINUOUS_CLEAR:
+  C202  CD0FC2        	  CALL CLEAR_1CH_PCG         ; 165 clk
+  C205  05            	  DEC  B                     ;   4 clk
+  C206  15            	  DEC  D                     ;   4 clk
+  C207  20F9          	  JR   NZ, CONTINUOUS_CLEAR  ;  12 clk  : Total 185 clk
+  C209  CD0FC2        	  CALL CLEAR_1CH_PCG
+  C20C  10EF          	  DJNZ CLEAR_PCG_256_LOOP
+  C20E  C9            	  RET
+                      	
+                      	
+  C20F                	CLEAR_1CH_PCG:
+  C20F  0E00          	  LD   C,0         ; 7 clk
+  C211  ED79          	  OUT  (C),A
+  C213  0C            	  INC  C
+  C214  ED79          	  OUT  (C),A
+  C216  0C            	  INC  C
+  C217  ED79          	  OUT  (C),A
+  C219  0C            	  INC  C
+  C21A  ED79          	  OUT  (C),A
+  C21C  0C            	  INC  C
+  C21D  ED79          	  OUT  (C),A
+  C21F  0C            	  INC  C
+  C220  ED79          	  OUT  (C),A
+  C222  0C            	  INC  C
+  C223  ED79          	  OUT  (C),A
+  C225  0C            	  INC  C            ;  4 clk
+  C226  ED79          	  OUT  (C),A        ; 12 clk
+  C228  C9            	  RET               ; 10 clk : Total 145 clk
+                      	
+  C229  34302C323500  	WIDTH DB "40,25",0
+  C22F  302C32352C302C	CONSOLE DB "0,25,0,0",0
+        3000          	
+  C238  00045000      	ATTRIB_DATA DB 0,4,80,0
+                      	
+                      	;
+                      	;
+                      	; CIRCLE
+                      	;
+                      	; https://dencha.ojaru.jp/programs_07/pg_graphic_09a1.html
+                      	;
+  C23C                	MiechenerCircle:
+  C23C  ED5BB2C5      	  LD  DE,(Radius)
+  C240  ED53A8C5      	  LD  (cy), DE
+  C244  210300        	  LD  HL,3
+  C247  B7            	  OR  A
+  C248  ED52          	  SBC HL,DE
+  C24A  B7            	  OR  A
+  C24B  ED52          	  SBC HL,DE
+  C24D  22ACC5        	  LD  (M_d),HL
+                      	
+  C250  2AAEC5        	  LD   HL,(X_POS)
+  C253  22A2C5        	  LD   (center_x),HL
+                      	
+  C256  2AB0C5        	  LD   HL,(Y_POS)
+  C259  22A4C5        	  LD   (center_y),HL
+                      	
+  C25C  ED5BB2C5      	  LD   DE,(Radius)
+  C260  19            	  ADD  HL,DE
+  C261  22B0C5        	  LD   (Y_POS),HL
+  C264  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+                      	
+  C267  2AA4C5        	  LD   HL,(center_y)
+  C26A  ED5BB2C5      	  LD   DE,(Radius)
+  C26E  B7            	  OR   A
+  C26F  ED52          	  SBC  HL,DE
+  C271  22B0C5        	  LD   (Y_POS),HL
+  C274  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+                      	
+                      	
+  C277  2AA4C5        	  LD   HL,(center_y)
+  C27A  22B0C5        	  LD   (Y_POS),HL
+  C27D  2AA2C5        	  LD   HL,(center_x)
+  C280  ED5BB2C5      	  LD   DE,(Radius)
+  C284  19            	  ADD  HL,DE
+  C285  22AEC5        	  LD   (X_POS),HL
+  C288  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+                      	
+  C28B  2AA4C5        	  LD   HL,(center_y)
+  C28E  22B0C5        	  LD   (Y_POS),HL
+  C291  2AA2C5        	  LD   HL,(center_x)
+  C294  ED5BB2C5      	  LD   DE,(Radius)
+  C298  B7            	  OR   A
+  C299  ED52          	  SBC  HL,DE
+  C29B  22AEC5        	  LD   (X_POS),HL
+  C29E  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+                      	
+  C2A1  210000        	  LD   HL,0
+  C2A4  22A6C5        	  LD   (cx),HL
+  C2A7                	for_cx_loop:
+  C2A7  2AA6C5        	  LD   HL,(cx)
+  C2AA  ED5BA8C5      	  LD   DE,(cy)
+  C2AE  B7            	  OR   A
+  C2AF  ED52          	  SBC  HL,DE
+  C2B1  2805          	  JR   Z, for_cx_body
+  C2B3  3803          	  JR   C, for_cx_body
+  C2B5  C33EC0        	  JP   BUFFER_FLASH
+                      	;  RET
+  C2B8                	for_cx_body:
+  C2B8  2AA6C5        	  LD   HL,(cx)      ; DE = 4*cx
+  C2BB  29            	  ADD  HL,HL
+  C2BC  29            	  ADD  HL,HL
+  C2BD  EB            	  EX   DE,HL
+  C2BE  2AA8C5        	  LD   HL,(cy)      ; BC = 4*cy
+  C2C1  29            	  ADD  HL,HL
+  C2C2  29            	  ADD  HL,HL
+  C2C3  44            	  LD   B,H
+  C2C4  4D            	  LD   C,L
+                      	
+  C2C5  2AACC5        	  LD   HL,(M_d)
+  C2C8  CB7C          	  BIT  7,H
+  C2CA  280A          	  JR   Z, for_cx_plus
+  C2CC  19            	  ADD  HL,DE
+  C2CD  110600        	  LD   DE,6
+  C2D0  19            	  ADD  HL,DE
+  C2D1  22ACC5        	  LD   (M_d),HL
+  C2D4  1814          	  JR   for_cx_body2
+                      	
+  C2D6                	for_cx_plus:
+  C2D6  19            	  ADD  HL,DE
+  C2D7  B7            	  OR   A
+  C2D8  ED42          	  SBC  HL,BC
+  C2DA  110A00        	  LD   DE,10
+  C2DD  19            	  ADD  HL,DE
+  C2DE  22ACC5        	  LD   (M_d),HL
+  C2E1  ED5BA8C5      	  LD   DE,(cy)
+  C2E5  1B            	  DEC  DE
+  C2E6  ED53A8C5      	  LD   (cy),DE
+                      	
+  C2EA                	for_cx_body2:
+  C2EA  2AA2C5        	  LD   HL,(center_x)
+  C2ED  ED5BA8C5      	  LD   DE,(cy)
+  C2F1  19            	  ADD  HL,DE
+  C2F2  22AEC5        	  LD   (X_POS),HL
+  C2F5  2AA4C5        	  LD   HL,(center_y)
+  C2F8  ED5BA6C5      	  LD   DE,(cx)
+  C2FC  19            	  ADD  HL,DE
+  C2FD  22B0C5        	  LD   (Y_POS),HL
+  C300  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+                      	
+  C303  2AA2C5        	  LD   HL,(center_x)
+  C306  ED5BA6C5      	  LD   DE,(cx)
+  C30A  19            	  ADD  HL,DE
+  C30B  22AEC5        	  LD   (X_POS),HL
+  C30E  2AA4C5        	  LD   HL,(center_y)
+  C311  ED5BA8C5      	  LD   DE,(cy)
+  C315  19            	  ADD  HL,DE
+  C316  22B0C5        	  LD   (Y_POS),HL
+  C319  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+                      	
+  C31C  2AA2C5        	  LD   HL,(center_x)
+  C31F  ED5BA6C5      	  LD   DE,(cx)
+  C323  B7            	  OR   A
+  C324  ED52          	  SBC  HL,DE
+  C326  22AEC5        	  LD   (X_POS),HL
+  C329  2AA4C5        	  LD   HL,(center_y)
+  C32C  ED5BA8C5      	  LD   DE,(cy)
+  C330  19            	  ADD  HL,DE
+  C331  22B0C5        	  LD   (Y_POS),HL
+  C334  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+                      	
+  C337  2AA2C5        	  LD   HL,(center_x)
+  C33A  ED5BA8C5      	  LD   DE,(cy)
+  C33E  B7            	  OR   A
+  C33F  ED52          	  SBC  HL,DE
+  C341  22AEC5        	  LD   (X_POS),HL
+  C344  2AA4C5        	  LD   HL,(center_y)
+  C347  ED5BA6C5      	  LD   DE,(cx)
+  C34B  19            	  ADD  HL,DE
+  C34C  22B0C5        	  LD   (Y_POS),HL
+  C34F  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+                      	
+  C352  2AA2C5        	  LD   HL,(center_x)
+  C355  ED5BA8C5      	  LD   DE,(cy)
+  C359  B7            	  OR   A
+  C35A  ED52          	  SBC  HL,DE
+  C35C  22AEC5        	  LD   (X_POS),HL
+  C35F  2AA4C5        	  LD   HL,(center_y)
+  C362  ED5BA6C5      	  LD   DE,(cx)
+  C366  B7            	  OR   A
+  C367  ED52          	  SBC  HL,DE
+  C369  22B0C5        	  LD   (Y_POS),HL
+  C36C  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+                      	
+  C36F  2AA2C5        	  LD   HL,(center_x)
+  C372  ED5BA6C5      	  LD   DE,(cx)
+  C376  B7            	  OR   A
+  C377  ED52          	  SBC  HL,DE
+  C379  22AEC5        	  LD   (X_POS),HL
+  C37C  2AA4C5        	  LD   HL,(center_y)
+  C37F  ED5BA8C5      	  LD   DE,(cy)
+  C383  B7            	  OR   A
+  C384  ED52          	  SBC  HL,DE
+  C386  22B0C5        	  LD   (Y_POS),HL
+  C389  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+                      	
+  C38C  2AA2C5        	  LD   HL,(center_x)
+  C38F  ED5BA6C5      	  LD   DE,(cx)
+  C393  19            	  ADD  HL,DE
+  C394  22AEC5        	  LD   (X_POS),HL
+  C397  2AA4C5        	  LD   HL,(center_y)
+  C39A  ED5BA8C5      	  LD   DE,(cy)
+  C39E  B7            	  OR   A
+  C39F  ED52          	  SBC  HL,DE
+  C3A1  22B0C5        	  LD   (Y_POS),HL
+  C3A4  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+                      	
+  C3A7  2AA2C5        	  LD   HL,(center_x)
+  C3AA  ED5BA8C5      	  LD   DE,(cy)
+  C3AE  19            	  ADD  HL,DE
+  C3AF  22AEC5        	  LD   (X_POS),HL
+  C3B2  2AA4C5        	  LD   HL,(center_y)
+  C3B5  ED5BA6C5      	  LD   DE,(cx)
+  C3B9  B7            	  OR   A
+  C3BA  ED52          	  SBC  HL,DE
+  C3BC  22B0C5        	  LD   (Y_POS),HL
+  C3BF  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+                      	
+  C3C2  2AA6C5        	  LD   HL,(cx)
+  C3C5  23            	  INC  HL
+  C3C6  22A6C5        	  LD   (cx),HL
+  C3C9  C3A7C2        	  JP   for_cx_loop
+                      	
+                      	;
+                      	; (X1,Y1)と(X2,Y2)を交換する
+                      	;
+                      	
+  C3CC                	SWAP_X1Y1_X2Y2:
+  C3CC  2AAEC5        	  LD   HL,(X1_POS)
+  C3CF  ED5BB2C5      	  LD   DE,(X2_POS)
+  C3D3  ED53AEC5      	  LD   (X1_POS),DE
+  C3D7  22B2C5        	  LD   (X2_POS),HL
+                      	
+  C3DA  2AB0C5        	  LD   HL,(Y1_POS)
+  C3DD  ED5BB4C5      	  LD   DE,(Y2_POS)
+  C3E1  ED53B0C5      	  LD   (Y1_POS),DE
+  C3E5  22B4C5        	  LD   (Y2_POS),HL
+  C3E8  C9            	  RET
+                      	
+                      	
+  C3E9                	NEG_HL:
+  C3E9  D5            	  PUSH DE
+  C3EA  110000        	  LD   DE,0
+  C3ED  EB            	  EX   DE,HL
+  C3EE  B7            	  OR   A
+  C3EF  ED52          	  SBC  HL,DE
+  C3F1  D1            	  POP  DE
+  C3F2  C9            	  RET
+                      	
+  C3F3                	LINE:
+  C3F3                	CALC_DXDY:
+  C3F3  2AAEC5        	  LD   HL,(X1_POS)
+  C3F6  ED5BB2C5      	  LD   DE,(X2_POS)
+  C3FA  B7            	  OR   A
+  C3FB  ED52          	  SBC  HL,DE
+  C3FD  3003          	  JR   NC,CALC_DXDY_X
+  C3FF  CDE9C3        	  CALL NEG_HL
+  C402                	CALC_DXDY_X:
+  C402  229EC5        	  LD   (dx),HL
+  C405  2AB0C5        	  LD   HL,(Y1_POS)
+  C408  ED5BB4C5      	  LD   DE,(Y2_POS)
+  C40C  B7            	  OR   A
+  C40D  ED52          	  SBC  HL,DE
+  C40F  3003          	  JR   NC,CALC_DXDY_Y
+  C411  CDE9C3        	  CALL NEG_HL
+  C414                	CALC_DXDY_Y:
+  C414  22A0C5        	  LD   (dy),HL
+                      	
+  C417  3A9EC5        	  LD   A,(dx)
+  C41A  47            	  LD   B,A
+  C41B  3A9FC5        	  LD   A,(dx+1)
+  C41E  B0            	  OR   B
+  C41F  281A          	  JR   Z, LINE_vertical
+                      	
+  C421  3AA0C5        	  LD   A,(dy)
+  C424  47            	  LD   B,A
+  C425  3AA1C5        	  LD   A,(dy+1)
+  C428  B0            	  OR   B
+  C429  283F          	  JR   Z, LINE_horizontal
+                      	
+  C42B  2A9EC5        	  LD   HL,(dx)
+  C42E  ED5BA0C5      	  LD   DE,(dy)
+  C432  B7            	  OR   A
+  C433  ED52          	  SBC  HL,DE
+  C435  DA15C5        	  JP   C, LINE_y_base
+  C438  C38EC4        	  JP   LINE_x_base
+                      	
+                      	;
+                      	; 縦線を描く
+                      	;
+                      	
+  C43B                	LINE_vertical:
+  C43B  3AA0C5        	  LD   A,(dy)
+  C43E  47            	  LD   B,A
+  C43F  3AA1C5        	  LD   A,(dy+1)
+  C442  B0            	  OR   B
+  C443  CA89C0        	  JP   Z, CHECK_BUFFER_AND_PSET
+                      	
+  C446  2AB0C5        	  LD   HL,(Y1_POS)
+  C449  ED5BB4C5      	  LD   DE,(Y2_POS)
+  C44D  B7            	  OR   A
+  C44E  ED52          	  SBC  HL,DE
+  C450  3803          	  JR   C, LINE_vertical_start
+  C452  CDCCC3        	  CALL SWAP_X1Y1_X2Y2
+  C455                	LINE_vertical_start:
+  C455  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+  C458  ED5BB0C5      	  LD   DE,(Y1_POS)
+  C45C  2AB4C5        	  LD   HL,(Y2_POS)
+  C45F  B7            	  OR   A
+  C460  ED52          	  SBC  HL,DE
+  C462  C8            	  RET  Z
+  C463  13            	  INC  DE
+  C464  ED53B0C5      	  LD   (Y1_POS),DE
+  C468  18EB          	  JR   LINE_vertical_start
+                      	
+                      	;
+                      	; 横線を描く
+                      	;
+  C46A                	LINE_horizontal:
+  C46A  2AAEC5        	  LD   HL,(X1_POS)
+  C46D  ED5BB2C5      	  LD   DE,(X2_POS)
+  C471  B7            	  OR   A
+  C472  ED52          	  SBC  HL,DE
+  C474  3803          	  JR   C, LINE_horizontal_start
+  C476  CDCCC3        	  CALL SWAP_X1Y1_X2Y2
+  C479                	LINE_horizontal_start:
+  C479  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+  C47C  ED5BAEC5      	  LD   DE,(X1_POS)
+  C480  2AB2C5        	  LD   HL,(X2_POS)
+  C483  B7            	  OR   A
+  C484  ED52          	  SBC  HL,DE
+  C486  C8            	  RET  Z
+  C487  13            	  INC  DE
+  C488  ED53AEC5      	  LD   (X1_POS),DE
+  C48C  18EB          	  JR   LINE_horizontal_start
+                      	
+                      	;
+                      	; x軸を基準に描く
+                      	;
+  C48E                	LINE_x_base:
+  C48E  210000        	  LD   HL,0
+  C491  229CC5        	  LD   (line_drawn),HL
+  C494  2AAEC5        	  LD   HL,(X1_POS)
+  C497  ED5BB2C5      	  LD   DE,(X2_POS)
+  C49B  B7            	  OR   A
+  C49C  ED52          	  SBC  HL,DE
+  C49E  3803          	  JR   C, LINE_x_base_start
+  C4A0  CDCCC3        	  CALL SWAP_X1Y1_X2Y2
+  C4A3                	LINE_x_base_start:
+  C4A3  2AB0C5        	  LD   HL,(Y1_POS)
+  C4A6  ED5BB4C5      	  LD   DE,(Y2_POS)
+  C4AA  B7            	  OR   A
+  C4AB  ED52          	  SBC  HL,DE
+  C4AD  3833          	  JR   C, LINE_x_base_down
+  C4AF                	LINE_x_base_up:
+  C4AF  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+  C4B2  ED5BAEC5      	  LD   DE,(X1_POS)
+  C4B6  2AB2C5        	  LD   HL,(X2_POS)
+  C4B9  B7            	  OR   A
+  C4BA  ED52          	  SBC  HL,DE
+  C4BC  C8            	  RET  Z
+  C4BD  13            	  INC  DE
+  C4BE  ED53AEC5      	  LD   (X1_POS),DE
+  C4C2  2A9CC5        	  LD   HL,(line_drawn)
+  C4C5  ED5BA0C5      	  LD   DE,(dy)
+  C4C9  19            	  ADD  HL,DE
+  C4CA  229CC5        	  LD   (line_drawn),HL
+  C4CD  ED5B9EC5      	  LD   DE,(dx)
+  C4D1  B7            	  OR   A
+  C4D2  ED52          	  SBC  HL,DE
+  C4D4  38D9          	  JR   C, LINE_x_base_up
+  C4D6  229CC5        	  LD   (line_drawn),HL
+  C4D9  2AB0C5        	  LD   HL,(Y1_POS)
+  C4DC  2B            	  DEC  HL
+  C4DD  22B0C5        	  LD   (Y1_POS),HL
+  C4E0  18CD          	  JR   LINE_x_base_up
+                      	
+  C4E2                	LINE_x_base_down:
+  C4E2  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+  C4E5  ED5BAEC5      	  LD   DE,(X1_POS)
+  C4E9  2AB2C5        	  LD   HL,(X2_POS)
+  C4EC  B7            	  OR   A
+  C4ED  ED52          	  SBC  HL,DE
+  C4EF  C8            	  RET  Z
+  C4F0  13            	  INC  DE
+  C4F1  ED53AEC5      	  LD   (X1_POS),DE
+  C4F5  2A9CC5        	  LD   HL,(line_drawn)
+  C4F8  ED5BA0C5      	  LD   DE,(dy)
+  C4FC  19            	  ADD  HL,DE
+  C4FD  229CC5        	  LD   (line_drawn),HL
+  C500  ED5B9EC5      	  LD   DE,(dx)
+  C504  B7            	  OR   A
+  C505  ED52          	  SBC  HL,DE
+  C507  38D9          	  JR   C, LINE_x_base_down
+  C509  229CC5        	  LD   (line_drawn),HL
+  C50C  2AB0C5        	  LD   HL,(Y1_POS)
+  C50F  23            	  INC  HL
+  C510  22B0C5        	  LD   (Y1_POS),HL
+  C513  18CD          	  JR   LINE_x_base_down
+                      	
+                      	
+                      	
+  C515                	LINE_y_base:
+  C515  210000        	  LD   HL,0
+  C518  229CC5        	  LD   (line_drawn),HL
+  C51B  2AB0C5        	  LD   HL,(Y1_POS)
+  C51E  ED5BB4C5      	  LD   DE,(Y2_POS)
+  C522  B7            	  OR   A
+  C523  ED52          	  SBC  HL,DE
+  C525  3803          	  JR   C, LINE_y_base_start
+  C527  CDCCC3        	  CALL SWAP_X1Y1_X2Y2
+  C52A                	LINE_y_base_start:
+  C52A  2AAEC5        	  LD   HL,(X1_POS)
+  C52D  ED5BB2C5      	  LD   DE,(X2_POS)
+  C531  B7            	  OR   A
+  C532  ED52          	  SBC  HL,DE
+  C534  3833          	  JR   C, LINE_y_base_right
+  C536                	LINE_y_base_left:
+  C536  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+  C539  ED5BB0C5      	  LD   DE,(Y1_POS)
+  C53D  2AB4C5        	  LD   HL,(Y2_POS)
+  C540  B7            	  OR   A
+  C541  ED52          	  SBC  HL,DE
+  C543  C8            	  RET  Z
+  C544  13            	  INC  DE
+  C545  ED53B0C5      	  LD   (Y1_POS),DE
+  C549  2A9CC5        	  LD   HL,(line_drawn)
+  C54C  ED5B9EC5      	  LD   DE,(dx)
+  C550  19            	  ADD  HL,DE
+  C551  229CC5        	  LD   (line_drawn),HL
+  C554  ED5BA0C5      	  LD   DE,(dy)
+  C558  B7            	  OR   A
+  C559  ED52          	  SBC  HL,DE
+  C55B  38D9          	  JR   C, LINE_y_base_left
+  C55D  229CC5        	  LD   (line_drawn),HL
+  C560  2AAEC5        	  LD   HL,(X1_POS)
+  C563  2B            	  DEC  HL
+  C564  22AEC5        	  LD   (X1_POS),HL
+  C567  18CD          	  JR   LINE_y_base_left
+                      	
+  C569                	LINE_y_base_right:
+  C569  CD89C0        	  CALL CHECK_BUFFER_AND_PSET
+  C56C  ED5BB0C5      	  LD   DE,(Y1_POS)
+  C570  2AB4C5        	  LD   HL,(Y2_POS)
+  C573  B7            	  OR   A
+  C574  ED52          	  SBC  HL,DE
+  C576  C8            	  RET  Z
+  C577  13            	  INC  DE
+  C578  ED53B0C5      	  LD   (Y1_POS),DE
+  C57C  2A9CC5        	  LD   HL,(line_drawn)
+  C57F  ED5B9EC5      	  LD   DE,(dx)
+  C583  19            	  ADD  HL,DE
+  C584  229CC5        	  LD   (line_drawn),HL
+  C587  ED5BA0C5      	  LD   DE,(dy)
+  C58B  B7            	  OR   A
+  C58C  ED52          	  SBC  HL,DE
+  C58E  38D9          	  JR   C, LINE_y_base_right
+  C590  229CC5        	  LD   (line_drawn),HL
+  C593  2AAEC5        	  LD   HL,(X1_POS)
+  C596  23            	  INC  HL
+  C597  22AEC5        	  LD   (X1_POS),HL
+  C59A  18CD          	  JR   LINE_y_base_right
+                      	
+  C59C   <    2byte > 	line_drawn: DS 2
+  C59E   <    2byte > 	dx: DS 2
+  C5A0   <    2byte > 	dy: DS 2
+  C5A2   <    2byte > 	center_x: DS 2
+  C5A4   <    2byte > 	center_y: DS 2
+  C5A6   <    2byte > 	cx: DS 2
+  C5A8   <    2byte > 	cy: DS 2
+  C5AA   <    2byte > 	 DS 2
+                      	
+                      	
+  C5AC   <    2byte > 	M_d: DS 2
+                      	
+                      	
+  C5AE                	X1_POS:
+  C5AE   <    2byte > 	X_POS: DS 2
+  C5B0                	Y1_POS:
+  C5B0   <    2byte > 	Y_POS: DS 2
+                      	
+  C5B2                	Radius:
+  C5B2   <    2byte > 	X2_POS: DS 2
+  C5B4   <    2byte > 	Y2_POS: DS 2
+                      	
+  C5B6   <    1byte > 	BLK:   DS 1
+  C5B7   <    1byte > 	CH_NO: DS 1
+  C5B8   <    1byte > 	NUM_BUF: DS 1
+  C5B9   <    2byte > 	BUF_PTR: DS 2
+                      	
+  C5BB   <   32byte > 	BUFFER: DS 4*BUF_MAX
+  C5DB   <    2byte > 	VRAM_ADR: DS 2
+                      	;PCG_RAM_ADDR: DS 2
+  C5DD   < 8192byte > 	PCG_RAM DS 2000H
+                      	
+  E5DD                	  END
+[EOF:L:\000プチコン3号\プチコン4号\00soft\pcg-pC8001\pcg_demo5.asm]
+------------------------
+####  SYMBOL TABLE  ####
+------------------------
+$:			0E5DDH
+SYS_CLS			0045AH
+SYS_WIDTH		00843H
+SYS_CONSOLE		00884H
+BUF_MAX			00008H
+ENTRY:			0C000H
+INIT_PCG:		0C01BH
+CLS:			0C02AH
+BUFFER_FLASH:		0C03EH
+BUFFER_FLASH_LOOP:	0C051H
+SET_X:			0C061H
+SET_Y:			0C06BH
+SET_X2:			0C075H
+SET_Y2:			0C07FH
+CHECK_BUFFER_AND_PSET:	0C089H
+PSET_XY:		0C093H
+REGISTER_CH_NO:		0C0C7H
+NO_CARRY_1:		0C0EDH
+SHIFT_LOOP:		0C0F7H
+SHIFTED:		0C0FAH
+IS_NEXTCHR:		0C11EH
+CHK_NEXTCHR:		0C130H
+SEARCH_NEXT:		0C134H
+SEARCH_Y_LOOP:		0C138H
+SEARCH_X_LOOP:		0C13AH
+LESS_THAN:		0C141H
+NO_CARRY_SEARCH:	0C14AH
+CALC_ADR:		0C153H
+Y80_LOOP:		0C164H
+NO_Y80:			0C167H
+CALC_ADR_NO_CARRY:	0C17BH
+VSYNC:			0C184H
+VSYNC_0:		0C185H
+VSYNC_1:		0C18BH
+CLEAR_SCREEN:		0C193H
+CLEAR_SCREEN_Y_LOOP:	0C198H
+CLEAR_SCREEN_X_LOOP:	0C19BH
+CEAR_SCREEN_X_FIN:	0C1A7H
+CLEAR_SCREEN_X_LOOP2:	0C1AEH
+SET_ATTRIB:		0C1B5H
+SET_ATTRIB_LOOP:	0C1BAH
+CLEAR_PCG:		0C1CDH
+CLEAR_PCG_0:		0C1D3H
+CLEAR_PCG_256:		0C1F9H
+CLEAR_PCG_256_LOOP:	0C1FDH
+CONTINUOUS_CLEAR:	0C202H
+CLEAR_1CH_PCG:		0C20FH
+WIDTH:			0C229H
+CONSOLE:		0C22FH
+ATTRIB_DATA:		0C238H
+MiechenerCircle:	0C23CH
+for_cx_loop:		0C2A7H
+for_cx_body:		0C2B8H
+for_cx_plus:		0C2D6H
+for_cx_body2:		0C2EAH
+SWAP_X1Y1_X2Y2:		0C3CCH
+NEG_HL:			0C3E9H
+LINE:			0C3F3H
+CALC_DXDY:		0C3F3H
+CALC_DXDY_X:		0C402H
+CALC_DXDY_Y:		0C414H
+LINE_vertical:		0C43BH
+LINE_vertical_start:	0C455H
+LINE_horizontal:	0C46AH
+LINE_horizontal_start:	0C479H
+LINE_x_base:		0C48EH
+LINE_x_base_start:	0C4A3H
+LINE_x_base_up:		0C4AFH
+LINE_x_base_down:	0C4E2H
+LINE_y_base:		0C515H
+LINE_y_base_start:	0C52AH
+LINE_y_base_left:	0C536H
+LINE_y_base_right:	0C569H
+line_drawn:		0C59CH
+dx:			0C59EH
+dy:			0C5A0H
+center_x:		0C5A2H
+center_y:		0C5A4H
+cx:			0C5A6H
+cy:			0C5A8H
+M_d:			0C5ACH
+X1_POS:			0C5AEH
+X_POS:			0C5AEH
+Y1_POS:			0C5B0H
+Y_POS:			0C5B0H
+Radius:			0C5B2H
+X2_POS:			0C5B2H
+Y2_POS:			0C5B4H
+BLK:			0C5B6H
+CH_NO:			0C5B7H
+NUM_BUF:		0C5B8H
+BUF_PTR:		0C5B9H
+BUFFER:			0C5BBH
+VRAM_ADR:		0C5DBH
+PCG_RAM:		0C5DDH
+------------------------
