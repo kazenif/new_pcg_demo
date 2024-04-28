@@ -7,7 +7,7 @@
 ; 40colx25rows, Black and White mode,
 ; Emulate 320dot x 200 dot graphics
 ;
-; 2024.04.27
+; 2024.04.29
 ;
 ;-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
@@ -29,6 +29,7 @@
   SYS_WIDTH EQU 843H
   SYS_CONSOLE EQU 884H
   BUF_MAX EQU 8  ; 128
+  VRMDAT EQU 0675H ; VRAM LINE TOP ADDRESS DATA
 
 ; VSYNC後 331 x 36 =11916
 
@@ -166,7 +167,7 @@ PSET_XY:
   JR   NZ,REGISTER_CH_NO  ; 文字があった場合は、当該文字にドットを追加
   CALL IS_NEXTCHR         ; ブロック内の未使用文字コードを抽出
   RET  Z                  ; 未使用文字なし
-  LD   A,(CH_NO)
+;  LD   A,(CH_NO)
   LD   HL,(VRAM_ADR)      ; 未使用文字をVRAMに登録
   LD   (HL),A
 
@@ -230,15 +231,10 @@ SHIFTED:
 
 
 IS_NEXTCHR:
-  LD   HL,0F300H
+  LD   HL,CHAR_USED+1
   LD   A,(BLK)
-  OR   A
-  JR   Z, CHK_NEXTCHR
-  LD   HL,0F300H+120*8
-  DEC  A
-  JR   Z, CHK_NEXTCHR
-  LD   HL,0F300H+120*16
-CHK_NEXTCHR:
+  ADD  A,H
+  LD   H,A
   CALL SEARCH_NEXT
   RET
 
@@ -249,30 +245,24 @@ CHK_NEXTCHR:
 ;
 
 SEARCH_NEXT:
-  LD   D,0
-  LD   C,8
-SEARCH_Y_LOOP:
-  LD   B,40
-SEARCH_X_LOOP:
+  LD   D,1
+  LD   B,255
+SEARCH_LOOP:
   LD   A,(HL)
+  OR   A
+  JR   Z,EMPTY_CHAR_FOUND
   INC  HL
-  INC  HL
-  CP   D
-  JR   C,LESS_THAN
-  LD   D,A
-LESS_THAN:
-  DJNZ SEARCH_X_LOOP
-  LD   A,40
-  ADD  A,L
-  LD   L,A
-  JR   NC, NO_CARRY_SEARCH
-  INC  H
-NO_CARRY_SEARCH:
-  DEC  C
-  JR   NZ, SEARCH_Y_LOOP
-  LD   A,D
-  INC  A
+  INC  D
+  DJNZ SEARCH_LOOP
+  XOR  A             ; 空いているキャラクタが見つからなかった
   LD   (CH_NO),A
+  RET
+
+EMPTY_CHAR_FOUND:
+  LD   A,D
+  LD   (HL),A        ; 非ゼロの値が入っているので、フラグ代わりに用いる
+  LD   (CH_NO),A
+  OR   A
   RET
 
 ;
@@ -291,19 +281,17 @@ NO_CARRY_SEARCH:
 ; (X_POS),(Y_POS)から、VRAMアドレスを計算
 ;
 CALC_ADR:
-  LD   HL,0F300H
+  LD   HL,VRMDAT
   LD   A,(Y_POS)
-  RRCA              ; A=A/8
+  RRCA              ; A=A/4
   RRCA
-  RRCA
-  AND  31
-  JR   Z,NO_Y80
-  LD   B,A
-  LD   DE,120
-Y80_LOOP:
-  ADD  HL,DE
-  DJNZ  Y80_LOOP
-NO_Y80:
+  AND  31*2
+  ADD  A,L
+  LD   L,A
+  LD   E,(HL)
+  INC  HL
+  LD   D,(HL)
+  EX   DE,HL
   LD   A,(X_POS+1)
   LD   B, A
   LD   A,(X_POS)
@@ -400,6 +388,7 @@ SET_ATTRIB_LOOP:
 ;
 
 CLEAR_PCG:
+  CALL CLEAR_CHAR_USED
   LD   HL,PCG_RAM
   LD   BC,2000H
 CLEAR_PCG_0:
@@ -463,6 +452,27 @@ CLEAR_1CH_PCG:
   INC  C            ;  4 clk
   OUT  (C),A        ; 12 clk
   RET               ; 10 clk : Total 145 clk
+
+
+CLEAR_CHAR_USED:
+  LD   HL,CHAR_USED
+  CALL CLEAR_CHAR_USED_SUB  ; CLEAR BLOCK 0
+  CALL CLEAR_CHAR_USED_SUB  ; CLEAR BLOCK 1
+  CALL CLEAR_CHAR_USED_SUB  ; CLEAR BLOCK 1
+  CALL CLEAR_CHAR_USED_SUB  ; CLEAR BLOCK 2
+  RET
+
+CLEAR_CHAR_USED_SUB:
+  LD   A,1
+  LD   (HL),A
+  INC  HL
+  XOR  A
+  LD   B,255
+CLEAR_CHAR_USED_SUB_1:
+  LD   (HL),A
+  INC  HL
+  DJNZ CLEAR_CHAR_USED_SUB_1
+  RET
 
 WIDTH DB "40,25",0
 CONSOLE DB "0,25,0,0",0
@@ -923,6 +933,7 @@ CH_NO: DS 1
 NUM_BUF: DS 1
 BUF_PTR: DS 2
 
+CHAR_USED: DS 4*256
 BUFFER: DS 4*BUF_MAX
 VRAM_ADR: DS 2
 ;PCG_RAM_ADDR: DS 2
