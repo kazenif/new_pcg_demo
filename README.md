@@ -25,7 +25,7 @@ C000Hよりマシン語で書かれているので、BASICプログラムでは
 ```
 CLEAR 300, &HBFFF
 ```
-を記述してください。
+を記述してください。```pcg_demo5.cmt```にマシン号ファイルとして格納されています。
 
 # 基本的な使い方
 DEF USR を使って、ユーザ関数として呼び出します。引数は、整数型です。
@@ -152,3 +152,42 @@ run
 ```
 
 ## line デモプログラム
+00_PCG_LINE.CMT で、マシン語とBASICからなります。SINカーブの計算がBASICで行われているため、実行時間は約40秒
+```
+mon
+*L
+*[Ctrl+B]
+cload"DEMO"
+run
+```
+![実行結果](./line_demo.jpg)
+
+```
+1000 CLEAR 300,&HBFFF
+1010 TIME$="00:00:00":LOCATE 0,0,0
+1020 DEF USR1=&HC000:A=USR1(0)
+1030 DEF USR2=&HC003:DEF USR3=&HC006:DEF USR4=&HC009:DEF USR5=&HC00C
+1040 DEF USR6=&HC012:DEF USR7=&HC018
+1050 '
+1060 X1%=0:Y1%=50
+1070 FOR T%=1 TO 319 STEP 2
+1080 X0%=X1%:Y0%=Y1%:X1%=T%:Y1%=20*SIN(T%/32*3.1415)+50
+1090 A%=USR2(X0%):A%=USR3(Y0%):A%=USR4(X1%):A%=USR5(Y1%):A%=USR6(0)
+1100 A%=USR7(0):NEXT
+1110 '
+1120 X1%=0:Y1%=100
+1130 FOR T%=1 TO 319 STEP 2
+1140 X0%=X1%:Y0%=Y1%:X1%=T%:Y1%=20*SIN(T%/16*3.1415)+100
+1150 A%=USR2(X0%):A%=USR3(Y0%):A%=USR4(X1%):A%=USR5(Y1%):A%=USR6(0)
+1160 A%=USR7(0):NEXT
+1170 '
+1180 X1%=0:Y1%=150
+1190 FOR T%=1 TO 319
+1200 X0%=X1%:Y0%=Y1%:X1%=T%:Y1%=20*SIN(T%/8*3.1415)+150
+1210 A%=USR2(X0%):A%=USR3(Y0%):A%=USR4(X1%):A%=USR5(Y1%):A%=USR6(0)
+1220 A%=USR7(0):NEXT
+1230 '
+1240 COLOR 8:LOCATE 16,24:PRINT TIME$;
+1250 A$=INKEY$:IF A$="" GOTO 1250
+1260 LOCATE 0,0,1:OUT 8,0:WIDTH 80,25:PRINT CHR$(12)
+```
