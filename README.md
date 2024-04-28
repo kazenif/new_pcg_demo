@@ -40,21 +40,21 @@ CLEAR 300, &HBFFF
 DEF USR を使って、ユーザ関数として呼び出します。引数は、整数型です。
 
 ```
-DEF USR1=&hC000 : USR1(0)   : 'PCGの初期化
-DEF USR2=&hC003 : USR2(X1%)  : 'X1座標のセット
-DEF USR3=&hC006 : USR3(Y1%)  : 'Y1座標のセット
-DEF USR4=&hC009 : USR4(X2%) : 'X2座標のセット
-DEF USR5=&hC00C : USR5(Y2%) : 'Y2座標のセット
-DEF USR6=&HC00F : USR6(0)   : 'PSET(X1, Y1) 実施
-DEF USR7=&HC012 : USR7(0)   : '(X1,Y1)-(X2,Y2)にラインを描画
-DEF USR8=&HC015 : USR8(0)   : '(X1,Y1)を中心に半径X2 の円を描く
-DEF USR9=&HC018 : USR9(0)   : 'バッファフラッシュ
+DEF USR1=&hC000 : A%=USR1(0)   : 'PCGの初期化
+DEF USR2=&hC003 : A%=USR2(X1%) : 'X1座標のセット
+DEF USR3=&hC006 : A%=USR3(Y1%) : 'Y1座標のセット
+DEF USR4=&hC009 : A%=USR4(X2%) : 'X2座標のセット
+DEF USR5=&hC00C : A%=USR5(Y2%) : 'Y2座標のセット
+DEF USR6=&HC00F : A%=USR6(0)   : 'PSET(X1, Y1) 実施
+DEF USR7=&HC012 : A%=USR7(0)   : '(X1,Y1)-(X2,Y2)にラインを描画
+DEF USR8=&HC015 : A%=USR8(0)   : '(X1,Y1)を中心に半径X2 の円を描く
+DEF USR9=&HC018 : A%=USR9(0)   : 'バッファフラッシュ
 ```
 
 ## 初期化
 PCGや画面の初期化は、&HC000 のルーチンで行います。
 ```
-DEF USR1=&hC000 : USR1(0)   : 'PCGの初期化
+DEF USR1=&hC000 : A%=USR1(0): 'PCGの初期化
 LOCATE 0,0,0                : 'カーソル非表示
 ```
 40桁×25行、白黒モードで初期化されます。
