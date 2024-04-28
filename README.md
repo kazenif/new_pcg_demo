@@ -91,3 +91,64 @@ PCGに対してVSYNC待ちを行い、反映されます。毎回PCGに対して
 line では、内部的に pset 機能が呼び出され、８点プロットされるごとに、
 PCGに対してVSYNC待ちを行い、反映されます。基本的に、circleでは円を８分割して描画して
 いるので、最後に```A%=USR9(0)```を実行するだけで十分だと考えられます。
+
+# デモプログラム
+本ライブラリとN-BASICで書かれたデモプログラムのCMTファイルを３個用意しました。
+
+## 3D demo プログラム
+00_PCG_3D.CMT で、マシン語とBASICからなります。実行には、20分強かかります。
+
+```
+mon
+*L
+*[Ctrl+B]
+cload"DEMO"
+run
+```
+![実行結果](./3d_demo.jpg)
+```
+10000 CLEAR 300,&HBFFF
+10010 TIME$="00:00:00":LOCATE 0,0,0
+10020 DEF USR1=&HC000:A=USR1(0)
+10030 DEF USR2=&HC003:DEF USR3=&HC006:DEF USR4=&HC00F:DEF USR5=&HC018
+10040 DIM DT%(255),DB%(255):DR=3.14/90
+10050 FOR I=0 TO 255:DT%(I)=192:DB%(I)=-1:NEXT
+10060 FOR Y=-45 TO 45:FOR X=-90 TO 90 STEP 2
+10070 R=DR*SQR(X*X+Y*Y*4):Z=50*COS(R)-15*COS(3*R)
+10080 SX%=INT(128+X-Y):SY%=INT(80-Y-Z):PS=0
+10090 IF SX%<0 OR 255<SX% THEN 10130
+10100 IF DT%(SX%)>SY% THEN DT%(SX%)=SY%:PS=1
+10110 IF DB%(SX%)<SY% THEN DB%(SX%)=SY%:PS=1
+10120 IF PS THEN A%=USR2(INT(SX%+32)):A%=USR3(SY%):A%=USR4(0)
+10130 A%=USR5(0):NEXT X,Y
+10140 COLOR 8:LOCATE 16,24:PRINT TIME$;
+10150 A$=INKEY$:IF A$="" GOTO 10150
+10160 LOCATE 0,0,1:OUT 8,0:PRINT CHR$(12)
+```
+## circle デモプログラム
+00_PCG_3D.CMT で、マシン語とBASICからなります。ほぼすべての処理がマシン語で実行されるので、実行時間は約10秒
+```
+mon
+*L
+*[Ctrl+B]
+cload"DEMO"
+run
+```
+![実行結果](./circle_demo.jpg)
+
+```
+1000 CLEAR 300,&HBFFF
+1010 TIME$="00:00:00":LOCATE 0,0,0
+1020 DEF USR1=&HC000:A=USR1(0)
+1030 DEF USR2=&HC003:DEF USR3=&HC006:DEF USR4=&HC009:DEF USR5=&HC015
+1040 DEF USR6=&HC015
+1050 FOR I%=0 TO 15
+1060 X0%=RND(1)*240+70:Y0%=RND(1)*160+20:R%=RND(1)*60+5
+1070 A%=USR2(X0%):A%=USR3(Y0%):A%=USR4(R%):A%=USR5(0)
+1080 NEXT
+1090 COLOR 8:LOCATE 16,24:PRINT TIME$;
+1100 A$=INKEY$:IF A$="" GOTO 1100
+1110 LOCATE 0,0,1:OUT 8,0:PRINT CHR$(12)
+```
+
+## line デモプログラム
