@@ -7,7 +7,7 @@
 ; 40colx25rows, Black and White mode,
 ; Emulate 320dot x 200 dot graphics
 ;
-; 2024.04.29
+; 2024.04.30
 ;
 ;-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
@@ -15,15 +15,18 @@
 
 
 ;
-; DEF USR1=&hC000 : USR1(0)   : 'PCGの初期化
-; DEF USR2=&hC003 : USR2(X%)  : 'X1座標のセット
-; DEF USR3=&hC006 : USR3(Y%)  : 'Y1座標のセット
-; DEF USR4=&hC009 : USR4(X2%) : 'X2座標のセット
-; DEF USR5=&hC00C : USR5(Y2%) : 'Y2座標のセット&PSET
-; DEF USR6=&HC00F : USR6()    ; 'PSET実施
-; DEF USR7=&HC012 : USR7(0)   : '(X1,Y1)-(X2,Y2)にラインを描画
-; DEF USR8=&HC015 : USR8(0)   ; '(X1,Y1)を中心に半径X2 の円を描く
-; DEF USR9=&HC018 : USR9(0)   ; 'バッファフラッシュ
+; DEF USR1=&hC000 : USR1(0)     : 'PCGの初期化
+; DEF USR2=&hC003 : USR2(X%)    : 'X1座標のセット
+; DEF USR3=&hC006 : USR3(Y%)    : 'Y1座標のセット
+; DEF USR4=&hC009 : USR4(X2%)   : 'X2座標のセット
+; DEF USR5=&hC00C : USR5(Y2%)   : 'Y2座標のセット&PSET
+; DEF USR6=&HC00F : USR6(0|1|2) : 'PSET/PRESET/PXOR実施
+;                               : '   引数:0:PSET
+;                               : '        1:PRESET
+;                               : '        2:XOR
+; DEF USR7=&HC012 : USR7(0|1|2) : '(X1,Y1)-(X2,Y2)にラインを描画
+; DEF USR8=&HC015 : USR8(0|1|2) ; '(X1,Y1)を中心に半径X2 の円を描く
+; DEF USR9=&HC018 : USR9(0)     ; 'バッファフラッシュ
 
   SYS_CLS EQU 45AH
   SYS_WIDTH EQU 843H
@@ -39,7 +42,7 @@ ENTRY:
   JP   SET_Y
   JP   SET_X2
   JP   SET_Y2
-  JP   CHECK_BUFFER_AND_PSET
+  JP   USR_PSET
   JP   LINE
   JP   MiechenerCircle
   JP   BUFFER_FLASH
@@ -131,6 +134,10 @@ SET_Y2:
   LD   (Y2_POS+1),A
   RET
 
+USR_PSET:
+  LD A,(HL)
+  LD (PRESET_FLAG),A
+
 CHECK_BUFFER_AND_PSET:
   LD   A,(NUM_BUF)        ; プロットバッファが満杯かチェック
   CP   BUF_MAX
@@ -162,16 +169,26 @@ PSET_XY:
   AND  3
   LD   (BLK),A
 
+  LD   A,(PRESET_FLAG)
+  DEC  A
+  JP   Z, PRESET_XY
+  DEC  A
+  JP   Z,PXOR_XY          ; PRESET に分岐
 
   CALL CALC_ADR           ; 指定座標に文字があるか確認
-  JR   NZ,REGISTER_CH_NO  ; 文字があった場合は、当該文字にドットを追加
-  CALL IS_NEXTCHR         ; ブロック内の未使用文字コードを抽出
+  JR   NZ,PSET_CH_NO      ; 文字があった場合は、当該文字にドットを追加
+
+  LD   A,(BLK)            ; ブロック3では、未使用文字の抽出は行わない
+  CP   3
+  RET  Z
+
+  CALL SEARCH_NEXT        ; ブロック内の未使用文字コードを抽出
   RET  Z                  ; 未使用文字なし
 ;  LD   A,(CH_NO)
   LD   HL,(VRAM_ADR)      ; 未使用文字をVRAMに登録
   LD   (HL),A
 
-REGISTER_CH_NO:           ; CH_NO にドットを追加する
+PSET_CH_NO:           ; CH_NO にドットを追加する
   LD   HL,PCG_RAM
   LD   A,(BLK)
   ADD  A,A                  ; (BLK) * 2K を HLに加える
@@ -229,22 +246,94 @@ SHIFTED:
   LD   (NUM_BUF),A
   RET
 
+PXOR_XY:
+  CALL CALC_ADR           ; 指定座標に文字があるか確認
+  JR   NZ,XOR_CH_NO       ; 文字があった場合は、当該文字にドットをXOR
 
-IS_NEXTCHR:
+  LD   A,(BLK)            ; ブロック3では、未使用文字の抽出は行わない
+  CP   3
+  RET  Z
+
+  CALL SEARCH_NEXT        ; ブロック内の未使用文字コードを抽出
+  RET  Z                  ; 未使用文字なし
+;  LD   A,(CH_NO)
+  LD   HL,(VRAM_ADR)      ; 未使用文字をVRAMに登録
+  LD   (HL),A
+
+XOR_CH_NO:                ; CH_NO にドットをXORする
+  LD   HL,PCG_RAM
+  LD   A,(BLK)
+  ADD  A,A                ; (BLK) * 2K を HLに加える
+  ADD  A,A
+  ADD  A,A
+  ADD  A,H
+  LD   H,A
+  LD   A,(CH_NO)          ; (CH_NO)*8 を HLに加える
+  LD   D,0
+  ADD  A,A
+  RL   D
+  ADD  A,A
+  RL   D
+  ADD  A,A
+  RL   D
+  LD   E,A
+  ADD  HL,DE
+
+  PUSH HL                 ; PCGの文字のバッファのアドレスを保存
+                          ; CHECK_EMPTY_CHAR で POP する
+
+  LD   A,(Y_POS)          ; (Y_POS) AND 7をHLに加える
+  AND  7
+  LD   C,A                ; この値は、OUT (C),A まで変えない
+  ADD  A,L
+  LD   L,A
+  JR   NC,NO_CARRY_3
+  INC  H
+NO_CARRY_3:
+;  LD   (PCG_RAM_ADDR),HL   ; この処理不要？
+  LD   A,(X_POS)           ; (X_POS)からビットパタンを計算
+  AND  7
+  LD   B,A
+  LD   A,80H
+  JR   Z,SHIFTED_XOR
+SHIFT_LOOP_XOR:
+  RRCA
+  DJNZ SHIFT_LOOP_XOR
+SHIFTED_XOR:
+  LD   DE,(BUF_PTR)
+  XOR  (HL)                 ; PCG RAM にビットパタンをANDする
+  LD   (HL),A
+  LD   A,(BLK)
+  OR   12
+  LD   (DE),A               ; ブロック番号を指定
+  INC  DE
+  LD   A,(CH_NO)
+  LD   (DE),A               ; キャラクタコード指定
+  INC  DE
+  LD   A,C
+  LD   (DE),A
+  INC  DE
+  LD   A,(HL)               ; PCG書き込みパタンを用意
+  LD   (DE),A
+  INC  DE
+  LD   (BUF_PTR),DE
+  LD   A,(NUM_BUF)
+  INC  A
+  LD   (NUM_BUF),A
+  JP   CHECK_EMPTY_CHAR
+
+
+;
+; ブロック内の未使用文字コードを探し(CH_NO)に入れる。
+; これが０なら、もう割り当てられるコードは存在しない
+;
+
+SEARCH_NEXT:
   LD   HL,CHAR_USED+1
   LD   A,(BLK)
   ADD  A,H
   LD   H,A
-  CALL SEARCH_NEXT
-  RET
 
-;
-; ブロック内の最大の文字コードを探し、+1 した値を
-; (CH_NO)に入れる。これが０なら、もう割り当てられる
-; コードは存在しない
-;
-
-SEARCH_NEXT:
   LD   D,1
   LD   B,255
 SEARCH_LOOP:
@@ -310,6 +399,123 @@ CALC_ADR_NO_CARRY:
   LD   (CH_NO),A
   OR   A
   RET
+
+CHECK_BUFFER_AND_PRESET:
+  LD A,(HL)
+  LD (PRESET_FLAG),A
+
+  LD   A,(NUM_BUF)        ; プロットバッファが満杯かチェック
+  CP   BUF_MAX
+  JR   C,PRESET_XY          ; プロットバッファに空きあり
+  CALL BUFFER_FLASH       ; プロットバッファをフラッシュ
+
+PRESET_XY:
+PRESET_XY_SUB:
+  CALL CALC_ADR           ; 指定座標に文字があるか確認
+  RET  Z                  ; 指定座標に文字がなければ終了
+
+PRESET_CH_NO:             ; CH_NO のドットを削減する
+  LD   HL,PCG_RAM
+  LD   A,(BLK)
+  ADD  A,A                ; (BLK) * 2K を HLに加える
+  ADD  A,A
+  ADD  A,A
+  ADD  A,H
+  LD   H,A
+  LD   A,(CH_NO)          ; (CH_NO)*8 を HLに加える
+  LD   D,0
+  ADD  A,A
+  RL   D
+  ADD  A,A
+  RL   D
+  ADD  A,A
+  RL   D
+  LD   E,A
+  ADD  HL,DE
+
+  PUSH HL                 ; ここで、PCGのパタンの0行目のアドレスを記録
+
+  LD   A,(Y_POS)          ; (Y_POS) AND 7をHLに加える
+  AND  7
+  LD   C,A                ; この値は、OUT (C),A まで変えない
+  ADD  A,L
+  LD   L,A
+  JR   NC,NO_CARRY_2
+  INC  H
+NO_CARRY_2:
+  LD   A,(X_POS)           ; (X_POS)からビットパタンを計算
+  AND  7
+  LD   B,A
+  LD   A,80H
+  JR   Z,SHIFTED_PRESET
+SHIFT_LOOP_PRESET:
+  RRCA
+  DJNZ SHIFT_LOOP_PRESET
+SHIFTED_PRESET:
+  LD   DE,(BUF_PTR)
+  OR   (HL)                 ; PCG RAM にビットパタンをORする
+  LD   (HL),A
+  LD   A,(BLK)
+  OR   12
+  LD   (DE),A               ; ブロック番号を指定
+  INC  DE
+  LD   A,(CH_NO)
+  LD   (DE),A               ; キャラクタコード指定
+  INC  DE
+  LD   A,C
+  LD   (DE),A
+  INC  DE
+  LD   A,(HL)               ; PCG書き込みパタンを用意
+  LD   (DE),A
+  INC  DE
+  LD   (BUF_PTR),DE
+  LD   A,(NUM_BUF)
+  INC  A
+  LD   (NUM_BUF),A
+
+; ここから、PCGのパタンがAll 255でないかのチェック
+CHECK_EMPTY_CHAR:
+  POP  HL
+
+  LD   A,(BLK)   ; ブロック3 なら、この処理は行わない
+  CP   3
+  RET  Z
+
+  LD   A,(HL)    ; 0
+  INC  HL
+  AND  (HL)      ; 1
+  INC  HL
+  AND  (HL)      ; 2
+  INC  HL
+  AND  (HL)      ; 3
+  INC  HL
+  AND  (HL)      ; 4
+  INC  HL
+  AND  (HL)      ; 5
+  INC  HL
+  AND  (HL)      ; 6
+  INC  HL
+  AND  (HL)      ; 7
+  INC  A
+  RET  NZ        ; All 255 ではない
+  XOR  A
+  LD   HL,(VRAM_ADR)
+  LD   (HL),A    ; VRAM上のキャラをクリア
+
+  LD   HL,CHAR_USED
+  LD   A,(BLK)
+  ADD  A,H
+  LD   H,A
+  LD   A,(CH_NO)
+  ADD  A,L
+  LD   L,A
+  JR   NC, NO_CARRY_CLEAR_USED
+  INC  H
+NO_CARRY_CLEAR_USED:
+  XOR  A
+  LD   (HL),A
+  RET
+
 
 ;
 ; 垂直帰線期間待ち
@@ -390,7 +596,7 @@ SET_ATTRIB_LOOP:
 CLEAR_PCG:
   CALL CLEAR_CHAR_USED
   LD   HL,PCG_RAM
-  LD   BC,2000H
+  LD   BC,256*8*3+8*41
 CLEAR_PCG_0:
   LD   A,255
   LD   (HL),A
@@ -414,8 +620,9 @@ CLEAR_PCG_0:
 
   LD   A,15
   OUT  (8),A
-  CALL CLEAR_PCG_256
-  RET
+; CALL CLEAR_PCG_256        ; Omit calling
+;
+;  RET
 
 
 CLEAR_PCG_256:
@@ -459,7 +666,7 @@ CLEAR_CHAR_USED:
   CALL CLEAR_CHAR_USED_SUB  ; CLEAR BLOCK 0
   CALL CLEAR_CHAR_USED_SUB  ; CLEAR BLOCK 1
   CALL CLEAR_CHAR_USED_SUB  ; CLEAR BLOCK 1
-  CALL CLEAR_CHAR_USED_SUB  ; CLEAR BLOCK 2
+  CALL CLEAR_CHAR_USED_SUB41  ; CLEAR BLOCK 3
   RET
 
 CLEAR_CHAR_USED_SUB:
@@ -474,6 +681,23 @@ CLEAR_CHAR_USED_SUB_1:
   DJNZ CLEAR_CHAR_USED_SUB_1
   RET
 
+CLEAR_CHAR_USED_SUB41:
+  LD   A,1
+  LD   B,41
+CLEAR_CHAR_USED_SUB41_1:
+  LD   (HL),A
+  INC  HL
+  DJNZ CLEAR_CHAR_USED_SUB41_1
+
+  XOR  A
+  LD   B,215
+CLEAR_CHAR_USED_SUB41_2:
+  LD   (HL),A
+  INC  HL
+  DJNZ CLEAR_CHAR_USED_SUB41_2
+
+  RET
+
 WIDTH DB "40,25",0
 CONSOLE DB "0,25,0,0",0
 ATTRIB_DATA DB 0,4,80,0
@@ -485,7 +709,14 @@ ATTRIB_DATA DB 0,4,80,0
 ; https://dencha.ojaru.jp/programs_07/pg_graphic_09a1.html
 ;
 MiechenerCircle:
+  LD A,(HL)
+  LD (PRESET_FLAG),A
+
   LD  DE,(Radius)
+  LD  A,D                       ; 半径が0の時は、１点だけプロットする
+  OR  E
+  JP  Z,CHECK_BUFFER_AND_PSET
+
   LD  (cy), DE
   LD  HL,3
   OR  A
@@ -573,25 +804,25 @@ for_cx_plus:
   LD   (cy),DE
 
 for_cx_body2:
-  LD   HL,(center_x)
+
+  ;    同じ所を２回プロットしないようにチェック
+  ;
+  LD   HL,(cx)
   LD   DE,(cy)
-  ADD  HL,DE
-  LD   (X_POS),HL
-  LD   HL,(center_y)
-  LD   DE,(cx)
-  ADD  HL,DE
-  LD   (Y_POS),HL
-  CALL CHECK_BUFFER_AND_PSET
+  OR   A
+  SBC  HL, DE
+  JR   Z,  circle_half
+  JP   NC, BUFFER_FLASH
 
   LD   HL,(center_x)
-  LD   DE,(cx)
+;  LD   DE,(cy)
   ADD  HL,DE
   LD   (X_POS),HL
   LD   HL,(center_y)
-  LD   DE,(cy)
+  LD   DE,(cx)
   ADD  HL,DE
   LD   (Y_POS),HL
-  CALL CHECK_BUFFER_AND_PSET
+  CALL CHECK_BUFFER_AND_PSET    ; 0-45
 
   LD   HL,(center_x)
   LD   DE,(cx)
@@ -602,18 +833,7 @@ for_cx_body2:
   LD   DE,(cy)
   ADD  HL,DE
   LD   (Y_POS),HL
-  CALL CHECK_BUFFER_AND_PSET
-
-  LD   HL,(center_x)
-  LD   DE,(cy)
-  OR   A
-  SBC  HL,DE
-  LD   (X_POS),HL
-  LD   HL,(center_y)
-  LD   DE,(cx)
-  ADD  HL,DE
-  LD   (Y_POS),HL
-  CALL CHECK_BUFFER_AND_PSET
+  CALL CHECK_BUFFER_AND_PSET    ; 90-135
 
   LD   HL,(center_x)
   LD   DE,(cy)
@@ -625,19 +845,7 @@ for_cx_body2:
   OR   A
   SBC  HL,DE
   LD   (Y_POS),HL
-  CALL CHECK_BUFFER_AND_PSET
-
-  LD   HL,(center_x)
-  LD   DE,(cx)
-  OR   A
-  SBC  HL,DE
-  LD   (X_POS),HL
-  LD   HL,(center_y)
-  LD   DE,(cy)
-  OR   A
-  SBC  HL,DE
-  LD   (Y_POS),HL
-  CALL CHECK_BUFFER_AND_PSET
+  CALL CHECK_BUFFER_AND_PSET    ; 180-225
 
   LD   HL,(center_x)
   LD   DE,(cx)
@@ -648,7 +856,43 @@ for_cx_body2:
   OR   A
   SBC  HL,DE
   LD   (Y_POS),HL
-  CALL CHECK_BUFFER_AND_PSET
+  CALL CHECK_BUFFER_AND_PSET    ; 270-315
+
+
+circle_half:
+
+  LD   HL,(center_x)
+  LD   DE,(cx)
+  ADD  HL,DE
+  LD   (X_POS),HL
+  LD   HL,(center_y)
+  LD   DE,(cy)
+  ADD  HL,DE
+  LD   (Y_POS),HL
+  CALL CHECK_BUFFER_AND_PSET    ; 45-90
+
+  LD   HL,(center_x)
+  LD   DE,(cy)
+  OR   A
+  SBC  HL,DE
+  LD   (X_POS),HL
+  LD   HL,(center_y)
+  LD   DE,(cx)
+  ADD  HL,DE
+  LD   (Y_POS),HL
+  CALL CHECK_BUFFER_AND_PSET    ; 135-180
+
+  LD   HL,(center_x)
+  LD   DE,(cx)
+  OR   A
+  SBC  HL,DE
+  LD   (X_POS),HL
+  LD   HL,(center_y)
+  LD   DE,(cy)
+  OR   A
+  SBC  HL,DE
+  LD   (Y_POS),HL
+  CALL CHECK_BUFFER_AND_PSET    ; 225-270
 
   LD   HL,(center_x)
   LD   DE,(cy)
@@ -659,7 +903,9 @@ for_cx_body2:
   OR   A
   SBC  HL,DE
   LD   (Y_POS),HL
-  CALL CHECK_BUFFER_AND_PSET
+  CALL CHECK_BUFFER_AND_PSET    ; 315-360
+
+circle_skip:
 
   LD   HL,(cx)
   INC  HL
@@ -693,6 +939,8 @@ NEG_HL:
   RET
 
 LINE:
+  LD A,(HL)
+  LD (PRESET_FLAG),A
 CALC_DXDY:
   LD   HL,(X1_POS)
   LD   DE,(X2_POS)
@@ -918,7 +1166,7 @@ cy: DS 2
 
 M_d: DS 2
 
-
+PRESET_FLAG: DS 1
 X1_POS:
 X_POS: DS 2
 Y1_POS:
@@ -933,10 +1181,10 @@ CH_NO: DS 1
 NUM_BUF: DS 1
 BUF_PTR: DS 2
 
-CHAR_USED: DS 4*256
+CHAR_USED: DS 3*256
 BUFFER: DS 4*BUF_MAX
 VRAM_ADR: DS 2
 ;PCG_RAM_ADDR: DS 2
-PCG_RAM DS 2000H
+PCG_RAM DS 256*8*3+8*41
 
   END
