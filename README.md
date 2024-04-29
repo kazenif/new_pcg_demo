@@ -10,6 +10,10 @@
 
 が行えます。
 
+- 描画実行時に、引数を追加 0:PSET(描画), 1:PRESET(消去), 2:XOR(XOR)の３つのモードを実現
+- CIRCLEで同じ場所に２回プロットしないように、処理を追加
+- PCGのパタンの記憶用メモリを、Block3は41キャラに限定し、ワークエリアの削減を実施
+
 ソースをいじれば、80桁×40行でも実行可能ですが、その場合は各ブロックの
 文字数が640文字となり、256種ではすぐに文字が足りなくなりそうなので、
 1ブロックあたり320文字の40桁モードを利用してます。
@@ -46,15 +50,15 @@ CLEAR 300, &HBFFF
 DEF USR を使って、ユーザ関数として呼び出します。引数は、整数型です。
 
 ```
-DEF USR1=&hC000 : A%=USR1(0)   : 'PCGの初期化
-DEF USR2=&hC003 : A%=USR2(X1%) : 'X1座標のセット
-DEF USR3=&hC006 : A%=USR3(Y1%) : 'Y1座標のセット
-DEF USR4=&hC009 : A%=USR4(X2%) : 'X2座標のセット
-DEF USR5=&hC00C : A%=USR5(Y2%) : 'Y2座標のセット
-DEF USR6=&HC00F : A%=USR6(0)   : 'PSET(X1, Y1) 実施
-DEF USR7=&HC012 : A%=USR7(0)   : '(X1,Y1)-(X2,Y2)にラインを描画
-DEF USR8=&HC015 : A%=USR8(0)   : '(X1,Y1)を中心に半径X2 の円を描く
-DEF USR9=&HC018 : A%=USR9(0)   : 'バッファフラッシュ
+DEF USR1=&hC000 : A%=USR1(0)     : 'PCGの初期化
+DEF USR2=&hC003 : A%=USR2(X1%)   : 'X1座標のセット
+DEF USR3=&hC006 : A%=USR3(Y1%)   : 'Y1座標のセット
+DEF USR4=&hC009 : A%=USR4(X2%)   : 'X2座標のセット
+DEF USR5=&hC00C : A%=USR5(Y2%)   : 'Y2座標のセット
+DEF USR6=&HC00F : A%=USR6(0|1|2) : 'PSET/PRESET/PXOR(X1, Y1) 実施。 引数0:PSET,1:PRESET,2:XOR
+DEF USR7=&HC012 : A%=USR7(0|1|2) : '(X1,Y1)-(X2,Y2)にラインを描画。  引数0:PSET,1:PRESET,2:XOR
+DEF USR8=&HC015 : A%=USR8(0|1|2) : '(X1,Y1)を中心に半径X2 の円を描く。引数0:PSET,1:PRESET,2:XOR
+DEF USR9=&HC018 : A%=USR9(0)     : 'バッファフラッシュ
 ```
 
 ## 初期化
