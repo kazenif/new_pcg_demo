@@ -112,6 +112,50 @@ PCGに対してVSYNC待ちを行い、反映されます。基本的に、circle
 いるので、毎回バッファのフラッシュを行う必要はなく、
 最後に```A%=USR9(0)```を実行するだけで十分だと考えられます。
 
+
+#### 円描画アルゴリズム
+円描画アルゴリズムは、[伝説のお茶の間](https://dencha.ojaru.jp/index.html)で開設されている、
+[ミッチェナー(Miechener) の円描画](https://dencha.ojaru.jp/programs_07/pg_graphic_09a1.html)の
+コードをベースに、同じ点を２度プロットしないような条件を加えたコードになっています。
+
+コード修正の目的は、XOR 描画モードで描画しても、途中で途切れることや、２回 XOR 描画モードで描画した際の消し忘れ
+が起きないようにするためのものです。
+
+```
+void MiechenerCircle (HDC hdc, LONG radius, POINT center, COLORREF col){
+    LONG cx, cy, d;
+
+    d = 3 - 2 * radius;
+    cy = radius;
+
+    // 開始点の描画
+    SetPixel (hdc, center.x, radius + center.y, col);   // point (0, R);
+    SetPixel (hdc, center.x, -radius + center.y, col);  // point (0, -R);
+    SetPixel (hdc, radius + center.x, center.y, col);   // point (R, 0);
+    SetPixel (hdc, -radius + center.x, center.y, col);  // point (-R, 0);
+
+    for (cx = 0; cx <= cy; cx++) {
+        if (d < 0)  d += 6  + 4 * cx;
+        else        d += 10 + 4 * cx - 4 * cy--;
+
+        // 描画 ※ブロック内の２つのif文は、２度同じ場所にプロットしない為のコード
+        if (cx <= cy) {
+            SetPixel (hdc,  cy + center.x,  cx + center.y, col);        // 0-45     度の間
+            SetPixel (hdc, -cx + center.x,  cy + center.y, col);        // 90-135   度の間
+            SetPixel (hdc, -cy + center.x, -cx + center.y, col);        // 180-225  度の間
+            SetPixel (hdc,  cx + center.x, -cy + center.y, col);        // 270-315  度の間
+        
+            if (cx != cy) {
+                SetPixel (hdc,  cx + center.x,  cy + center.y, col);    // 45-90    度の間
+                SetPixel (hdc, -cy + center.x,  cx + center.y, col);    // 135-180  度の間
+                SetPixel (hdc, -cx + center.x, -cy + center.y, col);    // 225-270  度の間
+                SetPixel (hdc,  cy + center.x, -cx + center.y, col);    // 315-360  度の間
+            }
+        }
+    }
+}
+```
+
 # デモプログラム
 本ライブラリとN-BASICで書かれたデモプログラムのCMTファイルを３個用意しました。
 
