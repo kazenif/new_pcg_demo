@@ -61,7 +61,7 @@ DEF USR8=&HC015 : A%=USR8(0|1|2) : '(X1,Y1)を中心に半径X2 の円を描く�
 DEF USR9=&HC018 : A%=USR9(0)     : 'バッファフラッシュ
 ```
 
-## 初期化
+## 初期化(画面クリア)
 PCGや画面の初期化は、&HC000 のルーチンで行います。
 ```
 DEF USR1=&hC000 : A%=USR1(0): 'PCGの初期化
@@ -114,7 +114,7 @@ PCGに対してVSYNC待ちを行い、反映されます。基本的に、circle
 
 
 #### 円描画アルゴリズム
-円描画アルゴリズムは、[伝説のお茶の間](https://dencha.ojaru.jp/index.html)で開設されている、
+円描画アルゴリズムは、[伝説のお茶の間](https://dencha.ojaru.jp/index.html)で解説されている、
 [ミッチェナー(Miechener) の円描画](https://dencha.ojaru.jp/programs_07/pg_graphic_09a1.html)の
 コードをベースに、同じ点を２度プロットしないような条件を加えたコードになっています。
 
