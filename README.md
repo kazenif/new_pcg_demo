@@ -160,7 +160,7 @@ void MiechenerCircle (HDC hdc, LONG radius, POINT center, COLORREF col){
 本ライブラリとN-BASICで書かれたデモプログラムのCMTファイルを３個用意しました。
 
 ## 3D demo プログラム
-00_PCG_3D.CMT で、マシン語とBASICからなります。実行には、20分強かかります。
+[00_PCG_3D.CMT](./00_PCG_3D.CMT) で、マシン語とBASICからなります。実行には、20分強かかります。
 
 ```
 mon
@@ -190,7 +190,7 @@ run
 10160 LOCATE 0,0,1:OUT 8,0:PRINT CHR$(12)
 ```
 ## circle デモプログラム
-00_PCG_CIRCLE.CMT で、マシン語とBASICからなります。ほぼすべての処理がマシン語で実行されるので、実行時間は約10秒
+[00_PCG_CIRCLE.CMT](./00_PCG_CIRCLE.CMT) で、マシン語とBASICからなります。ほぼすべての処理がマシン語で実行されるので、実行時間は約10秒
 ```
 mon
 *L
@@ -216,7 +216,7 @@ run
 ```
 
 ## line デモプログラム
-00_PCG_LINE.CMT で、マシン語とBASICからなります。SINカーブの計算がBASICで行われているため、実行時間は約40秒
+[00_PCG_LINE.CMT](./00_PCG_LINE.CMT) で、マシン語とBASICからなります。SINカーブの計算がBASICで行われているため、実行時間は約40秒
 ```
 mon
 *L
