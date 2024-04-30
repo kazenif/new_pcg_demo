@@ -56,7 +56,7 @@ DEF USR3=&hC006 : A%=USR3(Y1%)   : 'Y1座標のセット
 DEF USR4=&hC009 : A%=USR4(X2%)   : 'X2座標のセット
 DEF USR5=&hC00C : A%=USR5(Y2%)   : 'Y2座標のセット
 DEF USR6=&HC00F : A%=USR6(0|1|2) : 'PSET/PRESET/PXOR(X1, Y1) 実施。 引数0:PSET,1:PRESET,2:XOR
-DEF USR7=&HC012 : A%=USR7(0|1|2) : '(X1,Y1)-(X2,Y2)にラインを描画。  引数0:PSET,1:PRESET,2:XOR
+DEF USR7=&HC012 : A%=USR7(0|1|2|4|5|6|8|9|12) : '(X1,Y1)-(X2,Y2)にラインを描画。引数で，0:line, 1:line preset, 2:line xor, 4:box, 5:box preset, 6:box xor, 8:boxfill, 9:boxfill preset, 12:boxfill xor 実行
 DEF USR8=&HC015 : A%=USR8(0|1|2) : '(X1,Y1)を中心に半径X2 の円を描く。引数0:PSET,1:PRESET,2:XOR
 DEF USR9=&HC018 : A%=USR9(0)     : 'バッファフラッシュ
 ```
@@ -75,25 +75,25 @@ LOCATE 0,0,0                : 'カーソル非表示
 
 1. ```DEF USR2=&HC003``` の ```A%=USR2(X%)``` でX座標を指定、
 2. ```DEF USR3=&HC006``` の ```A%=USR3(Y%)``` でY座標を指定
-3. ```DEF USR6=&HC00F``` の ```A%=USR6(0)```でPSET実行
+3. ```DEF USR6=&HC00F``` の ```A%=USR6(0|1|2)```でPSET実行.引数0:PSET,1:PRESET,2:XOR
 4. 1～3を必要なだけ繰り返す
 5. ```DEF USR9=&HC018``` の ```A%=USR9(0)```でバッファ上のPCGの設定を反映させる
 
-プロットは、８点プロットされるごとに、PCGに対してVSYNC待ちを行い、反映されます。
+プロットは、16点プロットされるごとに、PCGに対してVSYNC待ちを行い、反映されます。
 毎回PCGに対して反映させたい場合は、明示的に```A%=USR9(0)```を実行してください。
 
-### line
+### line, box, boxfill
 グラフィックで(X1%, Y1%)-(X2%,Y2%)に直線を描画する
 
 1. ```DEF USR2=&HC003``` の ```A%=USR2(X1%)``` でX1座標を指定、
 2. ```DEF USR3=&HC006``` の ```A%=USR3(Y1%)``` でY1座標を指定
 3. ```DEF USR4=&HC009``` の ```A%=USR4(X2%)``` でX2座標を指定、
 4. ```DEF USR5=&HC00C``` の ```A%=USR5(Y2%)``` でY2座標を指定
-5. ```DEF USR7=&HC012``` の ```A%=USR7(0)``` でline実行
+5. ```DEF USR7=&HC012``` の ```A%=USR7(0|1|2|4|5|6|8|9|12)``` 引数により　0:line, 1:line preset, 2:line xor, 4:box, 5:box preset, 6:box xor, 8:boxfill, 9:boxfill preset, 12:boxfill xor 実行
 6. 1～5を必要なだけ繰り返す
 7. ```DEF USR9=&HC018``` の ```A%=USR9(0)```でバッファ上のPCGの設定を反映させる
 
-line では、内部的に pset 機能が呼び出され、８点プロットされるごとに、
+line では、内部的に pset 機能が呼び出され、16点プロットされるごとに、
 PCGに対してVSYNC待ちを行い、反映されます。毎回PCGに対して反映させたい場合は、
 明示的に```A%=USR9(0)```を実行してください。
 
@@ -103,11 +103,11 @@ PCGに対してVSYNC待ちを行い、反映されます。毎回PCGに対して
 1. ```DEF USR2=&HC003``` の ```A%=USR2(X%)``` でX座標を指定、
 2. ```DEF USR3=&HC006``` の ```A%=USR3(Y%)``` でY座標を指定
 3. ```DEF USR4=&HC009``` の ```A%=USR4(R%)``` で半径を指定、
-4. ```DEF USR8=&HC015``` の ```A%=USR8(0)``` でcircle実行
+4. ```DEF USR8=&HC015``` の ```A%=USR8(0|1|2)``` でcircle実行.引数0:PSET,1:PRESET,2:XOR
 5. 1～4を必要なだけ繰り返す
 6. ```DEF USR9=&HC018``` の ```A%=USR9(0)```でバッファ上のPCGの設定を反映させる
 
-circle では、内部的に pset 機能が呼び出され、８点プロットされるごとに、
+circle では、内部的に pset 機能が呼び出され、16点プロットされるごとに、
 PCGに対してVSYNC待ちを行い、反映されます。基本的に、circleでは円を８分割して描画して
 いるので、毎回バッファのフラッシュを行う必要はなく、
 最後に```A%=USR9(0)```を実行するだけで十分だと考えられます。
