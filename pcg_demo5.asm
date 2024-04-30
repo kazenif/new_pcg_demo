@@ -20,18 +20,22 @@
 ; DEF USR3=&hC006 : USR3(Y%)    : 'Y1座標のセット
 ; DEF USR4=&hC009 : USR4(X2%)   : 'X2座標のセット
 ; DEF USR5=&hC00C : USR5(Y2%)   : 'Y2座標のセット&PSET
-; DEF USR6=&HC00F : USR6(0|1|2) : 'PSET/PRESET/PXOR実施
+; DEF USR6=&HC00F : USR6(0|1|2) : 'PSET/PRESET/PXOR/BOXFILL実施
 ;                               : '   引数:0:PSET
 ;                               : '        1:PRESET
 ;                               : '        2:XOR
-; DEF USR7=&HC012 : USR7(0|1|2) : '(X1,Y1)-(X2,Y2)にラインを描画
+;                               : '
+;                               : '        4:BOXFILL-FILL
+;                               : '        5:BOXFILL-PRESET
+;                               : '        6:BOXFILL-XOR
+; DEF USR7=&HC012 : USR7(0|1|2) : '(X1,Y1)-(X2,Y2)にラインを描画. 4でBOXFILL
 ; DEF USR8=&HC015 : USR8(0|1|2) ; '(X1,Y1)を中心に半径X2 の円を描く
 ; DEF USR9=&HC018 : USR9(0)     ; 'バッファフラッシュ
 
   SYS_CLS EQU 45AH
   SYS_WIDTH EQU 843H
   SYS_CONSOLE EQU 884H
-  BUF_MAX EQU 8  ; 128
+  BUF_MAX EQU 16  ; 128
   VRMDAT EQU 0675H ; VRAM LINE TOP ADDRESS DATA
 
 ; VSYNC後 331 x 36 =11916
@@ -134,9 +138,148 @@ SET_Y2:
   LD   (Y2_POS+1),A
   RET
 
+BOXFILL:
+  LD   HL,(X1_POS)
+  LD   DE,(X2_POS)
+  OR   A
+  SBC  HL,DE
+  JR   C, BOXFILL1
+
+  LD   HL,(X1_POS)
+  LD   (X1_POS),DE
+  LD   (X2_POS),HL
+
+BOXFILL1:
+  LD   HL,(X1_POS)
+  LD   (X_ORG),HL
+
+  LD   HL,(Y1_POS)
+  LD   DE,(Y2_POS)
+  OR   A
+  SBC  HL,DE
+  JR   C, BOXFILL2
+
+  LD   HL,(Y1_POS)
+  LD   (Y1_POS),DE
+  LD   (Y2_POS),HL
+
+BOXFILL2:
+BOXFILL_Y_LOOP:
+  LD   HL,(X_ORG)
+  LD   (X1_POS),HL
+BOXFILL_X_LOOP:
+  CALL CHECK_BUFFER_AND_PSET
+  LD   HL,(X1_POS)
+  INC  HL
+  LD   (X1_POS),HL
+  LD   DE,(X2_POS)
+  EX   DE,HL
+  OR   A
+  SBC  HL,DE
+  JR   NC, BOXFILL_X_LOOP
+
+  LD   HL,(Y1_POS)
+  INC  HL
+  LD   (Y1_POS),HL
+  LD   DE,(Y2_POS)
+  EX   DE,HL
+  OR   A
+  SBC  HL,DE
+  JR   NC, BOXFILL_Y_LOOP
+  JP   BUFFER_FLASH
+
+
+
+BOX:
+  LD   HL,(X1_POS)
+  LD   DE,(X2_POS)
+  OR   A
+  SBC  HL,DE
+  JR   C, BOX1
+
+  LD   HL,(X1_POS)
+  LD   (X1_POS),DE
+  LD   (X2_POS),HL
+
+BOX1:
+  LD   HL,(X1_POS)
+  LD   (X_ORG),HL
+
+  LD   HL,(Y1_POS)
+  LD   DE,(Y2_POS)
+  OR   A
+  SBC  HL,DE
+  JR   C, BOX2
+
+  LD   HL,(Y1_POS)
+  LD   (Y1_POS),DE
+  LD   (Y2_POS),HL
+
+BOX2:
+BOX_Y_LOOP:
+BOX_X0_LOOP:
+  CALL CHECK_BUFFER_AND_PSET
+  LD   HL,(X1_POS)
+  INC  HL
+  LD   (X1_POS),HL
+  LD   DE,(X2_POS)
+  EX   DE,HL
+  OR   A
+  SBC  HL,DE
+  JR   NC, BOX_X0_LOOP
+
+  LD   HL,(Y1_POS)
+  INC  HL
+  LD   (Y1_POS),HL
+  LD   DE,(Y2_POS)
+  EX   DE,HL
+  OR   A
+  SBC  HL,DE
+  JP   C, BUFFER_FLASH
+  JR   Z, BOX_FINAL_LOOP
+
+BOX_Y1_LOOP:
+  LD   HL,(X_ORG)
+  LD   (X1_POS),HL
+  CALL CHECK_BUFFER_AND_PSET
+  LD   HL,(X2_POS)
+  LD   (X1_POS),HL
+  CALL CHECK_BUFFER_AND_PSET
+
+  LD   HL,(Y1_POS)
+  INC  HL
+  LD   (Y1_POS),HL
+  LD   DE,(Y2_POS)
+  OR   A
+  SBC  HL,DE
+  JP   C, BOX_Y1_LOOP
+
+BOX_FINAL_LOOP:
+  LD   HL,(X_ORG)
+  LD   (X1_POS),HL
+BOX_X2_LOOP:
+  CALL CHECK_BUFFER_AND_PSET
+  LD   HL,(X1_POS)
+  INC  HL
+  LD   (X1_POS),HL
+  LD   DE,(X2_POS)
+  EX   DE,HL
+  OR   A
+  SBC  HL,DE
+  JR   NC, BOX_X2_LOOP
+  JP   BUFFER_FLASH
+
+
 USR_PSET:
-  LD A,(HL)
-  LD (PRESET_FLAG),A
+  LD  A,(HL)
+  AND 3
+  LD  (PRESET_FLAG),A
+  LD  A,(HL)
+  AND 12
+  CP  4
+  JP  Z, BOX
+  CP  8
+  JP  Z, BOXFILL
 
 CHECK_BUFFER_AND_PSET:
   LD   A,(NUM_BUF)        ; プロットバッファが満杯かチェック
@@ -1161,9 +1304,6 @@ center_x: DS 2
 center_y: DS 2
 cx: DS 2
 cy: DS 2
- DS 2
-
-
 M_d: DS 2
 
 PRESET_FLAG: DS 1
@@ -1176,15 +1316,19 @@ Radius:
 X2_POS: DS 2
 Y2_POS: DS 2
 
+X_ORG:  DS 2
+
 BLK:   DS 1
 CH_NO: DS 1
 NUM_BUF: DS 1
 BUF_PTR: DS 2
 
-CHAR_USED: DS 3*256
+
 BUFFER: DS 4*BUF_MAX
 VRAM_ADR: DS 2
 ;PCG_RAM_ADDR: DS 2
+
+CHAR_USED: DS 3*256
 PCG_RAM DS 256*8*3+8*41
 
   END
