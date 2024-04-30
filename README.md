@@ -1,4 +1,4 @@
-# new_pcg_demo
+# 新PCG用グラフィックルーチン群とデモプログラム
 ちくらっぺさん([@chiplappe](https://twitter.com/chiqlappe))の[新PCG](https://github.com/chiqlappe/new_pcg)のデモ用のライブラリです。40桁×25行で
 実行するので、320×200ドットのグラフィックが扱えます。
 
