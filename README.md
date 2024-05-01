@@ -158,7 +158,7 @@ void MiechenerCircle (HDC hdc, LONG radius, POINT center, COLORREF col){
 ```
 
 # デモプログラム
-本ライブラリとN-BASICで書かれたデモプログラムのCMTファイルを３個用意しました。
+本ライブラリとN-BASICで書かれたデモプログラムのCMTファイルを4個用意しました。
 
 ## 3D demo プログラム
 [00_PCG_3D.CMT](./00_PCG_3D.CMT) で、マシン語とBASICからなります。実行には、20分強かかります。
