@@ -265,7 +265,7 @@ mon
 cload"DEMO"
 run
 ```
-![実行結果](./box_demo_screenshot)
+![実行結果](./box_demo_screenshot.jpg)
 ```
 10000 '
 10010 ' Demonstration of XOR circle, box, and box fill
